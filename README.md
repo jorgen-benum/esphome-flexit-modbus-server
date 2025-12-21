@@ -37,6 +37,7 @@ This project implements a Modbus server for Flexit ventilation systems using ESP
 - **Supply Air Temperature:** Can only be set if no CI600 is connected (CS60 limitation).
 - **Startup Order:** ESP must be powered on before CS60, or CS60 won’t poll it.
 - **Optimistic Settings:** Some settings are “optimistic” and may not reflect changes from other panels or servers.
+- **Address:** Address 1 is required for Heater On/Off to function, but this wont work if you have a CI600 connected.
 
 ---
 
@@ -72,7 +73,7 @@ This project implements a Modbus server for Flexit ventilation systems using ESP
    flexit_modbus_server:
      - id: server
        uart_id: modbus_uart
-       address: 3
+       address: 3 # Address 1 is required for heater on/off, but this wont work in conjuction with a CI600
        # Depending on hardware/optional:
        # tx_enable_pin: GPIO16    # Set according to your hardware.
        # tx_enable_direct: true   # Set according to your hardware. Inverts the DE signal
