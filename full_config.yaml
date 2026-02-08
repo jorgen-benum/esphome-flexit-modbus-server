@@ -14,18 +14,18 @@ external_components:
     components: 
       - flexit_modbus_server
 
-# setup for XIAO ESP32C6 https://wiki.seeedstudio.com/xiao_esp32c6_getting_started/
+# setup for XIAO ESP32C3 https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/
 uart:
   id: modbus_uart
-  tx_pin: GPIO22
-  rx_pin: GPIO23
+  tx_pin: GPIO6
+  rx_pin: GPIO7
   baud_rate: 115200
 
 flexit_modbus_server:
   - id: server
     uart_id: modbus_uart
     address: 3
-    tx_enable_pin: GPIO2
+    tx_enable_pin: GPIO4
     tx_enable_direct: true
 
 # esp home controls and sensors
