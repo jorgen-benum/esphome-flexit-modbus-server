@@ -57,7 +57,7 @@ async def to_code(config):
     if not local_lib_exists:
         cg.add_library(
             name="ModbusRTUServer",
-            repository="https://github.com/MSkjel/ESP-ModbusRTUServer.git",
+            repository="https://github.com/jorgen-benum/ESP-ModbusRTUServer.git",
             version=None
         )
 
