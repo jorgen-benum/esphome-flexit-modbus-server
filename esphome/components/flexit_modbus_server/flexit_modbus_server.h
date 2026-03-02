@@ -72,6 +72,8 @@ enum HoldingRegisterIndex {
   REG_PERCENTAGE_HEAT_EXCHANGER             = 0xC8,
   REG_PERCENTAGE_HEATING                    = 0xC9,
   REG_PERCENTAGE_SUPPLY_FAN                 = 0xCA,
+  REG_OPERATION_TIME                        = 0xCB,
+  REG_NUM_FILTER_RESETS                     = 0xCC,
 
   // Alarm registers
   REG_ALARM_SENSOR_SUPPLY_FAULTY            = 0x104,
