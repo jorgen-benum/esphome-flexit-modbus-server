@@ -14,7 +14,7 @@ std::string mode_to_string(uint16_t mode) {
   return "Invalid mode";
 }
 
-uint16_t string_to_mode(StringRef mode_str) {
+uint16_t string_to_mode(const std::string &mode_str) {
   for (uint16_t i = 0; i < NUM_MODES; ++i) {
     if (mode_str == MODE_STRINGS[i]) {
       return i;

@@ -145,7 +145,7 @@ std::string mode_to_string(uint16_t mode);
  * @param mode_str The mode to convert.
  * @return The mode ID.
  */
-uint16_t string_to_mode(StringRef mode_str);
+uint16_t string_to_mode(const std::string &mode_str);
 
 // ------------------------------------------------------------------
 // FlexitModbusServer
