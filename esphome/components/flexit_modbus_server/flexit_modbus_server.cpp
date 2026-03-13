@@ -1,5 +1,6 @@
 #include "flexit_modbus_server.h"
 #ifdef USE_FLEXIT_TCP_BRIDGE
+#define IP_ADDRESS_BUFFER_SIZE 16
 #include "esphome/components/wifi/wifi_component.h"
 #endif
 
