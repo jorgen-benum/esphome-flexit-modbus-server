@@ -9,10 +9,12 @@
 #include "esphome.h"
 #include "ModbusRTUServer.h"
 
+#ifdef USE_FLEXIT_TCP_BRIDGE
 #ifdef USE_ESP32
 #include <WiFi.h>
 #elif defined(USE_ESP8266)
 #include <ESP8266WiFi.h>
+#endif
 #endif
 
 #include <vector>
@@ -145,7 +147,7 @@ std::string mode_to_string(uint16_t mode);
  * @param mode_str The mode to convert.
  * @return The mode ID.
  */
-uint16_t string_to_mode(std::string &mode_str);
+uint16_t string_to_mode(StringRef mode_str);
 
 // ------------------------------------------------------------------
 // FlexitModbusServer
@@ -258,6 +260,7 @@ public:
    */
   void set_tx_enable_direct(bool val);
 
+#ifdef USE_FLEXIT_TCP_BRIDGE
   /**
    * @brief Enable/disable TCP bridge mode.
    *
@@ -278,6 +281,7 @@ public:
    * @param max_clients Maximum number of clients (default: 4).
    */
   void set_tcp_bridge_max_clients(uint8_t max_clients);
+#endif  // USE_FLEXIT_TCP_BRIDGE
 
   // ----------------------------------------------------------------
   // Stream interface (required by the ModbusRTUServer library)
@@ -314,6 +318,7 @@ private:
   // ----------------------------------------------------------------
   // TCP Bridge Members
   // ----------------------------------------------------------------
+#ifdef USE_FLEXIT_TCP_BRIDGE
   /// @brief Whether TCP bridge mode is enabled.
   bool tcp_bridge_enabled_{false};
 
@@ -354,6 +359,7 @@ private:
    * @brief Remove disconnected TCP clients.
    */
   void cleanup_tcp_clients_();
+#endif  // USE_FLEXIT_TCP_BRIDGE
 };
 
 }  // namespace flexit_modbus_server

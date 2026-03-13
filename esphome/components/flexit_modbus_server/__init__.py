@@ -14,7 +14,7 @@ CONF_TCP_BRIDGE_MAX_CLIENTS = "tcp_bridge_max_clients"
 flexit_modbus_server_ns = cg.esphome_ns.namespace("flexit_modbus_server")
 FlexitModbusDeviceComponent = flexit_modbus_server_ns.class_("FlexitModbusServer", cg.Component)
 
-DEPENDENCIES = ["uart", "wifi"]
+DEPENDENCIES = ["uart"]
 
 CONFIG_SCHEMA = (
     cv.Schema(
@@ -61,6 +61,10 @@ async def to_code(config):
             version=None
         )
 
+    if config[CONF_TCP_BRIDGE_ENABLED]:
+        cg.add_define("USE_FLEXIT_TCP_BRIDGE")
+        cg.add_library("WiFi", None)
+
     id = config[CONF_ID]
     uart = await cg.get_variable(config["uart_id"])
     server = cg.new_Pvariable(id)
@@ -74,9 +78,10 @@ async def to_code(config):
             pin_number = pin_config['number']
             cg.add(server.set_tx_enable_pin(pin_number))
 
-    cg.add(server.set_tcp_bridge_enabled(config[CONF_TCP_BRIDGE_ENABLED]))
-    cg.add(server.set_tcp_bridge_port(config[CONF_TCP_BRIDGE_PORT]))
-    cg.add(server.set_tcp_bridge_max_clients(config[CONF_TCP_BRIDGE_MAX_CLIENTS]))
+    if config[CONF_TCP_BRIDGE_ENABLED]:
+        cg.add(server.set_tcp_bridge_enabled(config[CONF_TCP_BRIDGE_ENABLED]))
+        cg.add(server.set_tcp_bridge_port(config[CONF_TCP_BRIDGE_PORT]))
+        cg.add(server.set_tcp_bridge_max_clients(config[CONF_TCP_BRIDGE_MAX_CLIENTS]))
 
     await cg.register_component(server, config)
 

@@ -1,5 +1,7 @@
 #include "flexit_modbus_server.h"
+#ifdef USE_FLEXIT_TCP_BRIDGE
 #include "esphome/components/wifi/wifi_component.h"
+#endif
 
 namespace esphome {
 namespace flexit_modbus_server {
@@ -11,7 +13,7 @@ std::string mode_to_string(uint16_t mode) {
   return "Invalid mode";
 }
 
-uint16_t string_to_mode(std::string &mode_str) {
+uint16_t string_to_mode(StringRef mode_str) {
   for (uint16_t i = 0; i < NUM_MODES; ++i) {
     if (mode_str == MODE_STRINGS[i]) {
       return i;
@@ -33,6 +35,7 @@ void FlexitModbusServer::dump_config() {
     ESP_LOGCONFIG(TAG, "  TX Enable Direct: %s", tx_enable_direct_ ? "YES" : "NO");
   }
 
+#ifdef USE_FLEXIT_TCP_BRIDGE
   ESP_LOGCONFIG(TAG, "  TCP Bridge Enabled: %s", tcp_bridge_enabled_ ? "YES" : "NO");
 
   if (tcp_bridge_enabled_) {
@@ -46,8 +49,10 @@ void FlexitModbusServer::dump_config() {
       auto ips = wifi::global_wifi_component->get_ip_addresses();
 
       if (!ips.empty()) {
+        char ip_buf[IP_ADDRESS_BUFFER_SIZE];
+        ips[0].str_to(ip_buf);
         ESP_LOGCONFIG(TAG, "  TCP Bridge Status: Running on tcp://%s:%u",
-                      ips[0].str().c_str(), tcp_bridge_port_);
+                      ip_buf, tcp_bridge_port_);
       } else {
         ESP_LOGCONFIG(TAG, "  TCP Bridge Status: Waiting for IP...");
       }
@@ -55,6 +60,7 @@ void FlexitModbusServer::dump_config() {
       ESP_LOGCONFIG(TAG, "  TCP Bridge Status: Waiting for WiFi...");
     }
   }
+#endif  // USE_FLEXIT_TCP_BRIDGE
 }
 
 void FlexitModbusServer::setup() {
@@ -117,17 +123,21 @@ void FlexitModbusServer::setup() {
   };
   #endif
 
+#ifdef USE_FLEXIT_TCP_BRIDGE
   if (tcp_bridge_enabled_) {
     setup_tcp_bridge_();
   }
+#endif  // USE_FLEXIT_TCP_BRIDGE
 }
 
 void FlexitModbusServer::loop() {
   mb_.update();
 
+#ifdef USE_FLEXIT_TCP_BRIDGE
   if (tcp_bridge_enabled_) {
     handle_tcp_bridge_();
   }
+#endif  // USE_FLEXIT_TCP_BRIDGE
 }
 
 void FlexitModbusServer::write_holding_register(HoldingRegisterIndex reg, uint16_t value) {
@@ -224,6 +234,7 @@ void FlexitModbusServer::set_tx_enable_direct(bool val) {
   tx_enable_direct_ = val;
 }
 
+#ifdef USE_FLEXIT_TCP_BRIDGE
 void FlexitModbusServer::set_tcp_bridge_enabled(bool enabled) {
   tcp_bridge_enabled_ = enabled;
 }
@@ -235,6 +246,7 @@ void FlexitModbusServer::set_tcp_bridge_port(uint16_t port) {
 void FlexitModbusServer::set_tcp_bridge_max_clients(uint8_t max_clients) {
   tcp_bridge_max_clients_ = max_clients;
 }
+#endif  // USE_FLEXIT_TCP_BRIDGE
 
 // ---------------------------------------------------------
 // Stream interface implementation (required by ModbusRTUServer)
@@ -242,9 +254,11 @@ void FlexitModbusServer::set_tcp_bridge_max_clients(uint8_t max_clients) {
 size_t FlexitModbusServer::write(uint8_t data) {
   size_t result = uart::UARTDevice::write(data);
 
+#ifdef USE_FLEXIT_TCP_BRIDGE
   if (tcp_bridge_enabled_ && tcp_server_ != nullptr && !tcp_clients_.empty()) {
     uart_to_tcp_buffer_.push_back(data);
   }
+#endif
 
   return result;
 }
@@ -260,9 +274,11 @@ int FlexitModbusServer::read() {
     return v;
   }
 
+#ifdef USE_FLEXIT_TCP_BRIDGE
   if (tcp_bridge_enabled_ && tcp_server_ != nullptr && !tcp_clients_.empty()) {
     uart_rx_mirror_.push_back(static_cast<uint8_t>(v));
   }
+#endif
 
   return v;
 }
@@ -274,6 +290,7 @@ int FlexitModbusServer::peek() {
 void FlexitModbusServer::flush() {
   uart::UARTDevice::flush();
 
+#ifdef USE_FLEXIT_TCP_BRIDGE
   if (!(tcp_bridge_enabled_ && tcp_server_ != nullptr))
     return;
 
@@ -306,11 +323,13 @@ void FlexitModbusServer::flush() {
     send_framed_block(uart_rx_mirror_, FRAME_DIR_RX);
     uart_rx_mirror_.clear();
   }
+#endif  // USE_FLEXIT_TCP_BRIDGE
 }
 
 // ---------------------------------------------------------
 // TCP Bridge Implementation
 // ---------------------------------------------------------
+#ifdef USE_FLEXIT_TCP_BRIDGE
 void FlexitModbusServer::setup_tcp_bridge_() {
   if (wifi::global_wifi_component == nullptr ||
       !wifi::global_wifi_component->is_connected()) {
@@ -326,8 +345,10 @@ void FlexitModbusServer::setup_tcp_bridge_() {
   tcp_server_->begin();
   tcp_server_->setNoDelay(true);
 
+  char ip_buf[IP_ADDRESS_BUFFER_SIZE];
+  ips[0].str_to(ip_buf);
   ESP_LOGI(TAG, "TCP Bridge: Server started on tcp://%s:%u (max clients: %u)",
-          ips[0].str().c_str(), tcp_bridge_port_, tcp_bridge_max_clients_);
+          ip_buf, tcp_bridge_port_, tcp_bridge_max_clients_);
 }
 
 void FlexitModbusServer::handle_tcp_bridge_() {
@@ -372,6 +393,7 @@ void FlexitModbusServer::cleanup_tcp_clients_() {
     }
   }
 }
+#endif  // USE_FLEXIT_TCP_BRIDGE
 
 }  // namespace flexit_modbus_server
 }  // namespace esphome
