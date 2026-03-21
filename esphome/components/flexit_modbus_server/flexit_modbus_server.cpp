@@ -134,6 +134,20 @@ void FlexitModbusServer::setup() {
 void FlexitModbusServer::loop() {
   mb_.update();
 
+  static uint16_t last_hold_0000 = 0xFFFF;
+  static int last_coil_0000 = -1;
+
+  uint16_t hold_0000 = mb_.getHoldingRegister(REG_CMD_MODE);
+  int coil_0000 = mb_.getCoil(REG_CMD_MODE);
+
+  if (hold_0000 != last_hold_0000 || coil_0000 != last_coil_0000) {
+    ESP_LOGW("flexit_watch",
+             "REG_CMD_MODE changed: hold=%u coil=%d",
+             hold_0000, coil_0000);
+    last_hold_0000 = hold_0000;
+    last_coil_0000 = coil_0000;
+  }
+
 #ifdef USE_FLEXIT_TCP_BRIDGE
   if (tcp_bridge_enabled_) {
     handle_tcp_bridge_();
