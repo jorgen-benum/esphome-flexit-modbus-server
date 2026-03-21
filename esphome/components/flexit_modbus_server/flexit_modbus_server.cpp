@@ -165,6 +165,7 @@ void FlexitModbusServer::send_cmd(HoldingRegisterIndex cmd_register, uint16_t va
   // Write the command value to the register and set the corresponding coil.
   mb_.setHoldingRegister(cmd_register, value);
   mb_.setCoil(cmd_register, 1);
+  ESP_LOGW("flexit_cmd", "send_cmd called: reg=0x%04X value=0x%04X", cmd_register, value);
 }
 
 // ---------------------------------------------------------
