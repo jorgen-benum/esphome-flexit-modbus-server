@@ -70,7 +70,6 @@ void FlexitModbusServer::setup() {
   mb_.begin(this, baudRate(), server_address_, tx_enable_pin_, tx_enable_direct_, MAX_NUM_COILS, MAX_NUM_HOLDING_REGISTERS, 0, 4);
   // The CS/CU/CE60 doesnt actually follow the Modbus RTU spec. It just ignores any interframe timeout and blasts request.
   // It doesnt actually matter that much to us, until they send the 0x65 reset cmd coil/register frame. It gets blasted as a broadcast right after we send our response.
-  mb_.setInterframeTimeout(0);
 
   // This is used as a cmd coil/register reset. Should we check the CRC?
   mb_.onInvalidFunction = [this](uint8_t* data, size_t length, bool broadcast) {
