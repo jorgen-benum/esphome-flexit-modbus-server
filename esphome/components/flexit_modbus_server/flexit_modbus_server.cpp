@@ -73,21 +73,34 @@ void FlexitModbusServer::setup() {
   // It doesnt actually matter that much to us, until they send the 0x65 reset cmd coil/register frame. It gets blasted as a broadcast right after we send our response.
 
   // This is used as a cmd coil/register reset. Should we check the CRC?
-  mb_.onInvalidFunction = [this](uint8_t* data, size_t length, bool broadcast) {
-    uint8_t function_code = data[1];
-    
-    if (function_code == 0x65) {
-        uint16_t address = (data[2] << 8) | data[3];
-        uint16_t value = (data[4] << 8) | data[5];
-        
-        mb_.setHoldingRegister(address, value);
-        mb_.setCoil(address, 0);
-      
-        return;
-    }
+mb_.onInvalidFunction = [this](uint8_t* data, size_t length, bool broadcast) {
+  uint8_t function_code = data[1];
 
-    mb_.sendException(data[1], 0x01, broadcast);
-  };
+  if (function_code == 0x65) {
+      uint16_t address = (data[2] << 8) | data[3];
+      uint16_t value = (data[4] << 8) | data[5];
+
+      ESP_LOGW("flexit_reset",
+               "0x65 reset: addr=0x%04X value=0x%04X",
+               address,
+               value);
+
+      mb_.setHoldingRegister(address, value);
+      mb_.setCoil(address, 0);
+
+      if (address == REG_CMD_MODE ||
+          address == REG_CMD_TEMPERATURE_SETPOINT) {
+
+          ESP_LOGW("flexit_reset",
+                   "Command reset detected: addr=0x%04X -> coil cleared",
+                   address);
+      }
+
+      return;
+  }
+
+  mb_.sendException(data[1], 0x01, broadcast);
+};
 
   #ifdef DEBUG
   // This is needed since the CS60 doesnt respect interframe timeouts. We get multiple frames in one buffer.
