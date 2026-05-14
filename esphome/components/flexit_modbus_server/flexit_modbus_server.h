@@ -89,7 +89,7 @@ enum HoldingRegisterIndex {
   REG_CMD_CLEAR_ALARMS                      = 0x13C,
 
   // Control variables
-  REG_CMD_MODE                              = REG_MODE, //#0x00,
+  REG_CMD_MODE                              = 0x00,
   REG_CMD_PERCENTAGE_SUPPLY_FAN_MIN         = 0x02,
   REG_CMD_PERCENTAGE_SUPPLY_FAN_NORMAL      = 0x03,
   REG_CMD_PERCENTAGE_SUPPLY_FAN_MAX         = 0x04,
