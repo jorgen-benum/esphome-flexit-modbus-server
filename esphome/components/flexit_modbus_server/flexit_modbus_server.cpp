@@ -73,7 +73,11 @@ void FlexitModbusServer::setup() {
   // It doesnt actually matter that much to us, until they send the 0x65 reset cmd coil/register frame. It gets blasted as a broadcast right after we send our response.
 
   // This is used as a cmd coil/register reset. Should we check the CRC?
-  mb_.onInvalidFunction = [this](uint8_t* data, size_t length, bool broadcast) {uint8_t function_code = data[1];
+   {
+    uint8_t function_code = data[1];
+
+    ESP_LOGW("flexit_invalid", "onInvalidFunction called: fn=0x%02X len=%u broadcast=%d",
+           data[1], length, broadcast);
 
   if (function_code == 0x65) {
       uint16_t address = (data[2] << 8) | data[3];
@@ -105,6 +109,9 @@ void FlexitModbusServer::setup() {
   // This is needed since the CS60 doesnt respect interframe timeouts. We get multiple frames in one buffer.
   mb_.onInvalidServer = [this](uint8_t* data, size_t length, bool broadcast) {
     size_t offset = 0;
+    ESP_LOGW("flexit_invalid", "onInvalidServer called: len=%u broadcast=%d",
+            length, broadcast);
+
 
     // Walk the buffer, frame by frame
     while (offset + 4 <= length) {
