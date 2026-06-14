@@ -4,9 +4,11 @@ wifi:
   fast_connect: true           # Needed if powered from the CS60
 
 logger:
-  baud_rate: 115200
+  baud_rate: 115200 #0
   hardware_uart: UART1
-  level: WARN
+  # level: WARN
+  level: DEBUG
+  # level: VERY_VERBOSE
 
 external_components:
   - source: github://jorgen-benum/esphome-flexit-modbus-server@main
@@ -14,19 +16,28 @@ external_components:
     components: 
       - flexit_modbus_server
 
-# setup for XIAO ESP32C3 https://wiki.seeedstudio.com/XIAO_ESP32C3_Getting_Started/
+# setup for XIAO ESP32C6 https://wiki.seeedstudio.com/xiao_esp32c6_getting_started/
 uart:
   id: modbus_uart
   tx_pin: GPIO6
   rx_pin: GPIO7
   baud_rate: 115200
 
+  # debug:
+    # direction: BOTH
+    # direction: BOTH
+    # dummy_receiver: false
+
 flexit_modbus_server:
   - id: server
     uart_id: modbus_uart
-    address: 3
+    address: 1 # must be 1 if using cl60 panel
     tx_enable_pin: GPIO4
     tx_enable_direct: true
+
+    tcp_bridge_enabled: true
+    tcp_bridge_port: 8502
+    tcp_bridge_max_clients: 3
 
 # esp home controls and sensors
 
@@ -269,6 +280,7 @@ number:
     min_value: 1
     step: 1
     optimistic: True
+    initial_value: 15
     restore_value: True
     disabled_by_default: True
     set_action:
@@ -319,6 +331,7 @@ number:
     min_value: 30
     step: 30
     optimistic: True
+    initial_value: 180
     restore_value: True
     mode: BOX
     set_action:
