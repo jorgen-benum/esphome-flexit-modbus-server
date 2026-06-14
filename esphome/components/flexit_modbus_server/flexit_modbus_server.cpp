@@ -7,6 +7,34 @@
 namespace esphome {
 namespace flexit_modbus_server {
 
+// Expected total length of the frame starting at `frame` (function code at
+// frame[1]), given `available` bytes are present. The CS60 blasts frames with no
+// interframe gap, so we size each one by its function code and let the CRC confirm
+// the boundary. Every frame on this bus is 8 bytes except the 0x10 register
+// broadcasts (sized by their byte-count field) and exceptions (5). Returns 0 for
+// a function code we don't handle, so the caller resyncs.
+static size_t expected_frame_length(const uint8_t *frame, size_t available) {
+  const uint8_t function = frame[1];
+
+  switch (function) {
+    case 0x01:    // read coils (the CS60's coil poll)
+    case 0x03:    // read holding registers
+    case 0x04:    // read input registers (startup server discovery)
+    case 0x06:    // write single register
+    case 0x65:    // CS60 custom register/coil write
+      return 8;
+    case 0x10: {  // write multiple registers
+      if (available < 7)
+        return available + 1;                            // need the byte count (frame[6]) first
+      size_t byte_count = frame[6];
+      size_t length = byte_count + 9;                    // 7 header + byte_count data + 2 CRC
+      return length <= MAX_FRAME_LENGTH ? length : 0;    // implausible count -> not a frame
+    }
+    default:
+      return (function & 0x80) ? 5 : 0;                  // exception response, else unknown
+  }
+}
+
 std::string mode_to_string(uint16_t mode) {
   if (mode < NUM_MODES) {
     return MODE_STRINGS[mode];
@@ -50,7 +78,7 @@ void FlexitModbusServer::dump_config() {
       auto ips = wifi::global_wifi_component->get_ip_addresses();
 
       if (!ips.empty()) {
-        char ip_buf[IP_ADDRESS_BUFFER_SIZE];
+        char ip_buf[network::IP_ADDRESS_BUFFER_SIZE];
         ips[0].str_to(ip_buf);
         ESP_LOGCONFIG(TAG, "  TCP Bridge Status: Running on tcp://%s:%u",
                       ip_buf, tcp_bridge_port_);
@@ -69,8 +97,38 @@ void FlexitModbusServer::setup() {
   // the baud rate from our UART parent, the server address, and the maximum number
   // of coils and holding registers.
   mb_.begin(this, baudRate(), server_address_, tx_enable_pin_, tx_enable_direct_, MAX_NUM_COILS, MAX_NUM_HOLDING_REGISTERS, 0, 4);
-  // The CS/CU/CE60 doesnt actually follow the Modbus RTU spec. It just ignores any interframe timeout and blasts request.
-  // It doesnt actually matter that much to us, until they send the 0x65 reset cmd coil/register frame. It gets blasted as a broadcast right after we send our response.
+
+  // The CX60 doesnt follow the Modbus RTU spec: it ignores interframe gaps
+  // and blasts frames back-to-back, so we can't delimit by timing. Take over
+  // framing instead: walk the raw buffer, accept the first length whose CRC
+  // validates, dispatch it, and keep any trailing partial frame for next time.
+  mb_.onRawBuffer = [this](uint8_t* data, size_t length) -> size_t {
+    size_t offset = 0;
+
+    while (length - offset >= MIN_FRAME_LENGTH) {
+      size_t avail = length - offset;
+      size_t len = expected_frame_length(data + offset, avail);
+
+      if (len == 0) {                            // not a frame start we know -> resync
+        ++offset;
+        continue;
+      }
+      if (len > avail)                           // frame not fully here yet -> wait
+        break;
+      if (!mb_.checkCrc(data + offset, len)) {   // right size, bad CRC -> resync
+        ++offset;
+        continue;
+      }
+
+      // The startup input-register reads (0x04) aren't implemented, so they reply
+      // with an exception via onInvalidFunction. That's still a valid response, so
+      // the CS60 sees us as online without us having to serve input registers.
+      mb_.processFrame(data + offset, len);
+      offset += len;
+    }
+
+    return offset;
+  };
 
   // This is used as a cmd coil/register reset. Should we check the CRC?
   mb_.onInvalidFunction = [this](uint8_t* data, size_t length, bool broadcast) {
@@ -105,42 +163,6 @@ void FlexitModbusServer::setup() {
 
     mb_.sendException(data[1], 0x01, broadcast);
   };
-
-  #ifdef DEBUG
-  // This is needed since the CS60 doesnt respect interframe timeouts. We get multiple frames in one buffer.
-  mb_.onInvalidServer = [this](uint8_t* data, size_t length, bool broadcast) {
-    size_t offset = 0;
-    ESP_LOGW("flexit_invalid", "onInvalidServer called: len=%u broadcast=%d",
-            length, broadcast);
-
-    // Walk the buffer, frame by frame
-    while (offset + 4 <= length) {
-      size_t avail = length - offset;
-      size_t flen  = modbus_frame_length(data + offset, avail);
-
-      if (flen == 0 || flen > avail) 
-        break;
-      
-      uint8_t id = data[offset + 0];
-      uint8_t fn = data[offset + 1];
-
-      if (fn == 0x65 && id == 0x0) {
-        uint16_t addr  = (data[offset+2] << 8) | data[offset + 3];
-        int16_t value = static_cast<int16_t>((data[offset + 4] << 8) | data[offset + 5]);
-        
-        //These two registers get spammed alot. Don't know what they are for.
-        if (addr != 0x94 && addr != 0x95) {
-          ESP_LOGW(TAG, "=== 0x65 PDU @ offset %u, len %u ===", (unsigned)offset, (unsigned)flen);
-          ESP_LOG_BUFFER_HEXDUMP(TAG, data + offset, flen, ESP_LOG_ERROR);
-          ESP_LOGW(TAG, "Received 0x65 reset command: address=0x%04X, value hex=0x%04X, value dec=%i",
-                  addr, value, value);
-        }
-      }
-
-      offset += flen;
-    }
-  };
-  #endif
 
 #ifdef USE_FLEXIT_TCP_BRIDGE
   if (tcp_bridge_enabled_) {
@@ -385,7 +407,7 @@ void FlexitModbusServer::setup_tcp_bridge_() {
   tcp_server_->begin();
   tcp_server_->setNoDelay(true);
 
-  char ip_buf[IP_ADDRESS_BUFFER_SIZE];
+  char ip_buf[network::IP_ADDRESS_BUFFER_SIZE];
   ips[0].str_to(ip_buf);
   ESP_LOGI(TAG, "TCP Bridge: Server started on tcp://%s:%u (max clients: %u)",
           ip_buf, tcp_bridge_port_, tcp_bridge_max_clients_);

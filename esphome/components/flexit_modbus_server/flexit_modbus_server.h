@@ -33,6 +33,10 @@ static constexpr uint16_t HOLDING_REGISTER_START_ADDRESS  = 0x00;
 
 static constexpr uint16_t MAX_NUM_COILS                   = 1000;
 
+// Frame size bounds.
+static constexpr size_t MIN_FRAME_LENGTH                  = 5;
+static constexpr size_t MAX_FRAME_LENGTH                  = 256;
+
 static constexpr uint8_t FRAME_DIR_TX  = 'T';
 static constexpr uint8_t FRAME_DIR_RX  = 'R';
 
@@ -293,16 +297,6 @@ public:
 private:
   /// @brief The new Modbus RTU server object.
   ModbusRTUServer mb_;
-
-  #ifdef DEBUG
-  /* 
-  * @brief  Calculate the expected length of a CS60 Modbus frame.
-  * @param buf frame
-  * @param avail length of the frame
-  * @return
-  */
-  size_t modbus_frame_length(const uint8_t *buf, size_t avail);
-  #endif
 
   /// @brief The Modbus server (server) address.
   uint8_t server_address_{1};
