@@ -6,8 +6,8 @@ wifi:
 logger:
   baud_rate: 115200 #0
   hardware_uart: UART1
-  # level: WARN
-  level: DEBUG
+  level: WARN
+  # level: DEBUG
   # level: VERY_VERBOSE
 
 external_components:
