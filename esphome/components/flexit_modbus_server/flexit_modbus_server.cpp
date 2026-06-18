@@ -133,32 +133,15 @@ void FlexitModbusServer::setup() {
   // This is used as a cmd coil/register reset. Should we check the CRC?
   mb_.onInvalidFunction = [this](uint8_t* data, size_t length, bool broadcast) {
     uint8_t function_code = data[1];
-    ESP_LOGW("flexit_invalid", "onInvalidFunction called: fn=0x%02X len=%u broadcast=%d",
-            data[1], length, broadcast);   
-
-  
-
-  if (function_code == 0x65) {
-      uint16_t address = (data[2] << 8) | data[3];
-      uint16_t value = (data[4] << 8) | data[5];
-
-      ESP_LOGW("flexit_reset",
-               "0x65 reset: addr=0x%04X value=0x%04X",
-               address,
-               value);
-
-      mb_.setHoldingRegister(address, value);
-      mb_.setCoil(address, 0);
-
-      if (address == REG_CMD_MODE ||
-          address == REG_CMD_TEMPERATURE_SETPOINT) {
-
-          ESP_LOGW("flexit_reset",
-                   "Command reset detected: addr=0x%04X -> coil cleared",
-                   address);
-      }
-
-      return;
+    
+    if (function_code == 0x65) {
+        uint16_t address = (data[2] << 8) | data[3];
+        uint16_t value = (data[4] << 8) | data[5];
+        
+        mb_.setHoldingRegister(address, value);
+        mb_.setCoil(address, 0);
+      
+        return;
     }
 
     mb_.sendException(data[1], 0x01, broadcast);
@@ -173,20 +156,6 @@ void FlexitModbusServer::setup() {
 
 void FlexitModbusServer::loop() {
   mb_.update();
-
-  static uint16_t last_hold_0000 = 0xFFFF;
-  static int last_coil_0000 = -1;
-
-  uint16_t hold_0000 = mb_.getHoldingRegister(REG_CMD_MODE);
-  int coil_0000 = mb_.getCoil(REG_CMD_MODE);
-
-  if (hold_0000 != last_hold_0000 || coil_0000 != last_coil_0000) {
-    ESP_LOGW("flexit_watch",
-             "REG_CMD_MODE changed: hold=%u coil=%d",
-             hold_0000, coil_0000);
-    last_hold_0000 = hold_0000;
-    last_coil_0000 = coil_0000;
-  }
 
 #ifdef USE_FLEXIT_TCP_BRIDGE
   if (tcp_bridge_enabled_) {
@@ -219,59 +188,7 @@ void FlexitModbusServer::send_cmd(HoldingRegisterIndex cmd_register, uint16_t va
   // Write the command value to the register and set the corresponding coil.
   mb_.setHoldingRegister(cmd_register, value);
   mb_.setCoil(cmd_register, 1);
-  ESP_LOGW("flexit_cmd",
-           "send_cmd: reg=0x%04X value=0x%04X | hold=%u coil=%d",
-           cmd_register,
-           value,
-           mb_.getHoldingRegister(cmd_register),
-           mb_.getCoil(cmd_register));
-  ESP_LOGW("flexit_cmd", "send_cmd called: reg=0x%04X value=0x%04X", cmd_register, value);
 }
-
-// ---------------------------------------------------------
-// Debugging functions
-// ---------------------------------------------------------
-#ifdef DEBUG
-size_t FlexitModbusServer::modbus_frame_length(const uint8_t *buf, size_t avail) {
-  if (avail < 4) return 0;
-  
-  const uint8_t fn = buf[1];
-  
-  // Exception responses
-  if (fn & 0x80) {
-      return (avail >= 5) ? 5 : 0;
-  }
-  
-  // This controller uses 0x01 for the big read (332 registers)
-  if (fn == 0x01) {
-      if (avail < 3) return 0;
-      
-      // Response: byte count in buf[2], expect ~83 bytes for 332 registers (bits)
-      if (buf[2] > 0 && buf[2] <= 250) {
-          return 1 + 1 + 1 + buf[2] + 2;  // Response format
-      }
-      return (avail >= 8) ? 8 : 0;  // Request format
-  }
-  
-  // 0x03 used for individual register reads
-  if (fn == 0x03) {
-      if (avail < 3) return 0;
-      
-      // Single register response will have byte count = 2
-      if (buf[2] == 2 && avail >= 7) {
-          return 7;  // ID + Fn + Count(1) + Data(2) + CRC(2)
-      }
-      return (avail >= 8) ? 8 : 0;  // Request format
-  }
-  
-  // 0x06 (write single) and 0x65 (custom reset): always 8 bytes
-  if (fn == 0x06 || fn == 0x65) {
-      return (avail >= 8) ? 8 : 0;
-  }
-  
-  return 0;
-}
-#endif
 
 // ---------------------------------------------------------
 // ESPHome UART Device Requirements
