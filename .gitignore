@@ -5,6 +5,7 @@ secrets.yaml
 # IDE and Editor files
 .vscode/
 .idea/
+.worktrees/
 *.swp
 *.swo
 *~
