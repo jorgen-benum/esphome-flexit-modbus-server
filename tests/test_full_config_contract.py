@@ -100,7 +100,12 @@ def test_existing_executor_dependencies_remain_unique() -> None:
         "extract_air_percentage_max",
     }
     for entity_id in dependency_ids:
-        assert len(re.findall(rf"^\s*- id: {entity_id}$", CONFIG, re.MULTILINE)) == 1
+        definitions = re.findall(
+            rf"^[ \t]*(?:-[ \t]+)?id: {re.escape(entity_id)}[ \t]*$",
+            CONFIG,
+            re.MULTILINE,
+        )
+        assert len(definitions) == 1
 
 
 def test_safety_paths_are_present() -> None:
