@@ -42,46 +42,227 @@ flexit_modbus_server:
 # esp home controls and sensors
 
 globals:
-  - id: fireplace_mode_active
+  - id: default_supply_fan_min
+    type: float
+    restore_value: no
+    initial_value: '50.0'  # Commissioned MIN supply
+
+  - id: default_extract_fan_min
+    type: float
+    restore_value: no
+    initial_value: '50.0'  # Commissioned MIN extract
+
+  - id: default_supply_fan_normal
+    type: float
+    restore_value: no
+    initial_value: '60.0'  # Commissioned NORMAL supply
+
+  - id: default_extract_fan_normal
+    type: float
+    restore_value: no
+    initial_value: '57.0'  # Commissioned NORMAL extract
+
+  - id: default_supply_fan_max
+    type: float
+    restore_value: no
+    initial_value: '100.0'  # Commissioned MAX supply
+
+  - id: default_extract_fan_max
+    type: float
+    restore_value: no
+    initial_value: '100.0'  # Commissioned MAX extract
+
+  - id: temporary_profile_active
     type: bool
     restore_value: no
     initial_value: 'false'
 
-  - id: previous_mode_before_fireplace
-    type: int
-    restore_value: yes
-    initial_value: '2'  # Default to Normal mode if we somehow fail
+  - id: temporary_profile_owner
+    type: std::string
+    restore_value: no
+    initial_value: '""'
 
-  - id: fireplace_duration_minutes
-    type: int
-    restore_value: yes
-    initial_value: '10'
+  - id: temporary_profile_target_mode
+    type: std::string
+    restore_value: no
+    initial_value: '""'
 
-  - id: original_supply_fan_max
+  - id: temporary_profile_supply
     type: float
     restore_value: no
-    initial_value: '100.0'
+    initial_value: '0.0'
 
-  - id: original_extract_fan_max
+  - id: temporary_profile_extract
     type: float
     restore_value: no
-    initial_value: '100.0'
+    initial_value: '0.0'
 
-  - id: fireplace_supply_fan_speed
+  - id: temporary_profile_restore_supply
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+
+  - id: temporary_profile_restore_extract
+    type: float
+    restore_value: no
+    initial_value: '0.0'
+
+  - id: temporary_profile_lease_seconds
     type: int
-    restore_value: yes
-    initial_value: '80'
-
-  - id: fireplace_extract_fan_speed
-    type: int
-    restore_value: yes
-    initial_value: '20'
-
-    # Track when mode was last changed to debounce conflict detection
-  - id: fireplace_mode_change_timestamp
-    type: unsigned long
     restore_value: no
     initial_value: '0'
+
+  - id: temporary_profile_lease_started_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: temporary_profile_change_ms
+    type: uint32_t
+    restore_value: no
+    initial_value: '0'
+
+  - id: temporary_profile_apply_pending
+    type: bool
+    restore_value: no
+    initial_value: 'false'
+
+api:
+  actions:
+    # One logical request: profile + target mode + owner + safety lease.
+    # Sending an identical request only renews the lease; no Modbus values or
+    # mode are re-applied.
+    - action: apply_temporary_profile
+      variables:
+        owner: string
+        target_mode: string
+        supply: float
+        extract: float
+        lease_seconds: int
+      then:
+        - lambda: |-
+            id(temporary_profile_apply_pending) = false;
+            if (owner.empty() || lease_seconds <= 0) {
+              ESP_LOGW("temp_profile", "Rejected request with empty owner or invalid lease");
+              return;
+            }
+
+            if (target_mode == "Stop") {
+              ESP_LOGW("temp_profile", "Stop is not a valid temporary-profile target");
+              return;
+            }
+
+            const int current_mode = id(server)->read_holding_register(
+              flexit_modbus_server::REG_MODE
+            );
+            if (current_mode == 0) {
+              ESP_LOGW("temp_profile", "Rejected temporary profile while Flexit is stopped");
+              return;
+            }
+
+            const bool same_request =
+              id(temporary_profile_active) &&
+              id(temporary_profile_owner) == owner &&
+              id(temporary_profile_target_mode) == target_mode &&
+              fabsf(id(temporary_profile_supply) - supply) < 0.01f &&
+              fabsf(id(temporary_profile_extract) - extract) < 0.01f;
+
+            id(temporary_profile_lease_seconds) = lease_seconds;
+            id(temporary_profile_lease_started_ms) = millis();
+
+            if (same_request) {
+              ESP_LOGD("temp_profile", "Renewing lease for owner '%s'", owner.c_str());
+              id(temporary_profile_lease_timer).execute();
+              return;
+            }
+
+            // First owner snapshots the profile being overridden. A replacement
+            // owner keeps that original snapshot, so humidity -> fireplace does
+            // not turn the humidity profile into the restore point.
+            if (!id(temporary_profile_active)) {
+              if (target_mode == "Min") {
+                id(temporary_profile_restore_supply) = id(supply_air_percentage_min).state;
+                id(temporary_profile_restore_extract) = id(extract_air_percentage_min).state;
+              } else if (target_mode == "Normal") {
+                id(temporary_profile_restore_supply) = id(supply_air_percentage_normal).state;
+                id(temporary_profile_restore_extract) = id(extract_air_percentage_normal).state;
+              } else if (target_mode == "Max") {
+                id(temporary_profile_restore_supply) = id(supply_air_percentage_max).state;
+                id(temporary_profile_restore_extract) = id(extract_air_percentage_max).state;
+              } else {
+                ESP_LOGW("temp_profile", "Unsupported target mode '%s'", target_mode.c_str());
+                return;
+              }
+            } else if (id(temporary_profile_target_mode) != target_mode) {
+              // Generic executor supports a different target later, but do not
+              // silently mix restore snapshots between profile slots.
+              ESP_LOGW("temp_profile", "Cannot change target mode while a temporary profile is active");
+              return;
+            }
+
+            id(temporary_profile_apply_pending) = true;
+            id(temporary_profile_active) = true;
+            id(temporary_profile_owner) = owner;
+            id(temporary_profile_target_mode) = target_mode;
+            id(temporary_profile_supply) = supply;
+            id(temporary_profile_extract) = extract;
+            id(temporary_profile_change_ms) = millis();
+
+            ESP_LOGI("temp_profile", "Applying owner='%s' mode=%s supply=%.0f extract=%.0f lease=%ds",
+                     owner.c_str(), target_mode.c_str(), supply, extract, lease_seconds);
+
+            if (target_mode == "Min") {
+              auto supply_call = id(supply_air_percentage_min).make_call();
+              supply_call.set_value(supply);
+              supply_call.perform();
+              auto extract_call = id(extract_air_percentage_min).make_call();
+              extract_call.set_value(extract);
+              extract_call.perform();
+            } else if (target_mode == "Normal") {
+              auto supply_call = id(supply_air_percentage_normal).make_call();
+              supply_call.set_value(supply);
+              supply_call.perform();
+              auto extract_call = id(extract_air_percentage_normal).make_call();
+              extract_call.set_value(extract);
+              extract_call.perform();
+            } else {
+              auto supply_call = id(supply_air_percentage_max).make_call();
+              supply_call.set_value(supply);
+              supply_call.perform();
+              auto extract_call = id(extract_air_percentage_max).make_call();
+              extract_call.set_value(extract);
+              extract_call.perform();
+            }
+        - delay: 200ms
+        - lambda: |-
+            // Renewal/rejected requests do not reassert the Flexit mode.
+            if (!id(temporary_profile_apply_pending) ||
+                !id(temporary_profile_active) ||
+                id(temporary_profile_owner) != owner) {
+              return;
+            }
+            id(temporary_profile_apply_pending) = false;
+            id(temporary_profile_change_ms) = millis();
+            auto call = id(set_mode).make_call();
+            call.set_option(target_mode);
+            call.perform();
+            id(temporary_profile_lease_timer).execute();
+            id(temporary_profile_owner_sensor).update();
+            id(temporary_profile_lease_remaining).update();
+
+    # Explicit release is owner-checked so a stale fireplace OFF cannot cancel
+    # a newer humidity request (or vice versa).
+    - action: release_temporary_profile
+      variables:
+        owner: string
+      then:
+        - if:
+            condition:
+              lambda: |-
+                return id(temporary_profile_active) &&
+                       id(temporary_profile_owner) == owner;
+            then:
+              - script.execute: temporary_profile_finish
 
 switch:
   - platform: template
@@ -118,100 +299,6 @@ switch:
             flexit_modbus_server::REG_CMD_TEMPERATURE_SUPPLY_AIR_CONTROL,
             0
           );
-
-  - platform: template
-    name: "Fireplace Mode"
-    id: fireplace_mode_switch
-    optimistic: false
-    lambda: |-
-      return id(fireplace_mode_active);
-
-    turn_on_action:
-      - lambda: |-
-          // Edge case: Don't activate if system is in Stop mode
-          int current_mode = id(server)->read_holding_register(flexit_modbus_server::REG_MODE);
-          if (current_mode == 0) {
-            ESP_LOGW("fireplace", "Cannot activate Fireplace mode while system is stopped");
-            return;
-          }
-
-          // Save current mode and fan speeds before switching
-          id(previous_mode_before_fireplace) = current_mode;
-
-          // Save current Max mode fan speeds (read from the number components)
-          id(original_supply_fan_max) = id(supply_air_percentage_max).state;
-          id(original_extract_fan_max) = id(extract_air_percentage_max).state;
-
-          ESP_LOGI("fireplace", "Saving current mode: %s (Supply: %.0f%%, Extract: %.0f%%)",
-                   flexit_modbus_server::mode_to_string(current_mode).c_str(),
-                   id(original_supply_fan_max),
-                   id(original_extract_fan_max));
-
-          ESP_LOGI("fireplace", "Activating Fireplace mode");
-          id(fireplace_mode_active) = true;
-
-          // Record timestamp BEFORE making changes to prevent false conflict detection
-          id(fireplace_mode_change_timestamp) = millis();
-
-      # Set fireplace fan speeds using the existing number components
-      - number.set:
-          id: supply_air_percentage_max
-          value: !lambda "return id(fireplace_supply_fan_speed);"
-      - number.set:
-          id: extract_air_percentage_max
-          value: !lambda "return id(fireplace_extract_fan_speed);"
-
-      - delay: 200ms  # Wait for fan speeds to apply
-
-      # Switch to Max mode using the existing select component
-      - select.set:
-          id: set_mode
-          option: "Max"
-
-      # Start the auto-shutoff timer
-      - script.execute: fireplace_timer
-
-      # Update the switch state
-      - lambda: |-
-          id(fireplace_mode_switch).publish_state(true);
-
-    turn_off_action:
-      - script.stop: fireplace_timer
-      - lambda: |-
-          if (!id(fireplace_mode_active)) {
-            ESP_LOGW("fireplace", "Fireplace mode already inactive");
-            return;
-          }
-
-          ESP_LOGI("fireplace", "Deactivating Fireplace mode");
-          id(fireplace_mode_active) = false;
-
-      # Restore original fan speeds using the existing number components
-      - number.set:
-          id: supply_air_percentage_max
-          value: !lambda "return id(original_supply_fan_max);"
-      - number.set:
-          id: extract_air_percentage_max
-          value: !lambda "return id(original_extract_fan_max);"
-
-      - delay: 200ms  # Wait for fan speeds to apply
-
-      # Restore previous mode using the existing select component
-      - lambda: |-
-          int restore_mode = id(previous_mode_before_fireplace);
-          std::string mode_str = flexit_modbus_server::mode_to_string(restore_mode);
-          ESP_LOGI("fireplace", "Restoring previous mode: %s", mode_str.c_str());
-
-          // Record timestamp for debouncing conflict detection
-          id(fireplace_mode_change_timestamp) = millis();
-
-          auto call = id(set_mode).make_call();
-          call.set_option(mode_str);
-          call.perform();
-
-      # Update the switch state
-      - lambda: |-
-          id(fireplace_mode_switch).publish_state(false);
 
 button:
   - platform: template
@@ -443,57 +530,6 @@ number:
             x
         );
 
-  - platform: template
-    name: "Fireplace Mode Duration"
-    id: fireplace_duration
-    min_value: 1
-    max_value: 240
-    step: 1
-    unit_of_measurement: "min"
-    mode: box
-    optimistic: false
-    lambda: |-
-      return id(fireplace_duration_minutes);
-    set_action:
-      - lambda: |-
-          id(fireplace_duration_minutes) = (int)x;
-          ESP_LOGI("fireplace", "Duration set to %d minutes", (int)x);
-      - component.update: fireplace_duration
-
-  - platform: template
-    name: "Fireplace Supply Fan Speed"
-    id: fireplace_supply_speed_control
-    min_value: 1
-    max_value: 100
-    step: 1
-    unit_of_measurement: "%"
-    mode: box
-    optimistic: false
-    lambda: |-
-      return id(fireplace_supply_fan_speed);
-    set_action:
-      - lambda: |-
-          id(fireplace_supply_fan_speed) = (int)x;
-          ESP_LOGI("fireplace", "Fireplace supply fan speed set to %d%%", (int)x);
-      - component.update: fireplace_supply_speed_control
-
-  - platform: template
-    name: "Fireplace Extract Fan Speed"
-    id: fireplace_extract_speed_control
-    min_value: 1
-    max_value: 100
-    step: 1
-    unit_of_measurement: "%"
-    mode: box
-    optimistic: false
-    lambda: |-
-      return id(fireplace_extract_fan_speed);
-    set_action:
-      - lambda: |-
-          id(fireplace_extract_fan_speed) = (int)x;
-          ESP_LOGI("fireplace", "Fireplace extract fan speed set to %d%%", (int)x);
-      - component.update: fireplace_extract_speed_control
-
 select:
   - platform: template
     id: set_mode
@@ -516,6 +552,22 @@ select:
         );
 
 sensor:
+  - platform: template
+    id: temporary_profile_lease_remaining
+    name: "Temporary Profile Lease Remaining"
+    icon: mdi:timer-outline
+    entity_category: diagnostic
+    unit_of_measurement: "s"
+    accuracy_decimals: 0
+    update_interval: 1s
+    lambda: |-
+      if (!id(temporary_profile_active) || id(temporary_profile_lease_seconds) <= 0) {
+        return 0.0f;
+      }
+      const uint32_t elapsed = (millis() - id(temporary_profile_lease_started_ms)) / 1000U;
+      const int remaining = id(temporary_profile_lease_seconds) - static_cast<int>(elapsed);
+      return static_cast<float>(remaining > 0 ? remaining : 0);
+
   - platform: template
     id: setpoint_air_temperature
     name: "Setpoint Air Temperature"
@@ -778,35 +830,19 @@ binary_sensor:
         flexit_modbus_server::REG_ALARM_FILTER_CHANGE
       ) != 0);
 
-  - platform: template
-    name: "Fireplace Mode Conflict Detected"
-    id: fireplace_conflict
-    internal: true
-    lambda: |-
-      if (!id(fireplace_mode_active)) {
-        return false;
-      }
-
-      // Debounce: Allow 5 seconds after mode change for Modbus to propagate
-      unsigned long time_since_change = millis() - id(fireplace_mode_change_timestamp);
-      if (time_since_change < 10000) {  // 10 second debounce
-        return false;  // Too soon after our mode change, ignore
-      }
-
-      // Check if mode was manually changed away from Max while fireplace mode is active
-      int current_mode = id(server)->read_holding_register(flexit_modbus_server::REG_MODE);
-      if (current_mode != 3) {  // Not in Max mode
-        ESP_LOGD("fireplace", "Conflict detected: current_mode=%d (expected 3), time_since_change=%lums",
-                 current_mode, time_since_change);
-        return true;  // Conflict detected
-      }
-      return false;
-    on_press:
-      - lambda: |-
-          ESP_LOGW("fireplace", "Mode changed manually during Fireplace mode - deactivating");
-      - switch.turn_off: fireplace_mode_switch
-
 text_sensor:
+  - platform: template
+    id: temporary_profile_owner_sensor
+    name: "Temporary Profile Owner"
+    icon: mdi:account-key-outline
+    entity_category: diagnostic
+    update_interval: 1s
+    lambda: |-
+      if (!id(temporary_profile_active) || id(temporary_profile_owner).empty()) {
+        return std::string("none");
+      }
+      return id(temporary_profile_owner);
+
   - platform: template
     id: current_mode
     name: "Current Mode"
@@ -819,13 +855,106 @@ text_sensor:
       );
 
 script:
-  - id: fireplace_timer
+  - id: temporary_profile_lease_timer
     mode: restart
     then:
+      - delay: !lambda |-
+          return static_cast<uint32_t>(id(temporary_profile_lease_seconds)) * 1000U;
+      - if:
+          condition:
+            lambda: return id(temporary_profile_active);
+          then:
+            - logger.log:
+                tag: temp_profile
+                level: INFO
+                format: "Temporary profile lease expired"
+            - script.execute: temporary_profile_finish
+
+  # Normal completion/release: return to Normal, restore the overridden profile,
+  # then clear ownership. Stop is never left automatically.
+  - id: temporary_profile_finish
+    mode: single
+    then:
+      - script.stop: temporary_profile_lease_timer
+      - if:
+          condition:
+            lambda: |-
+              return id(temporary_profile_active) &&
+                     id(server)->read_holding_register(flexit_modbus_server::REG_MODE) == 0;
+          then:
+            # Stop is protected even if an explicit release races the 1 s watcher.
+            - script.execute: temporary_profile_restore_snapshot
+            - script.execute: temporary_profile_clear_owner
+          else:
+            - lambda: |-
+                if (!id(temporary_profile_active)) return;
+                id(temporary_profile_change_ms) = millis();
+                auto mode_call = id(set_mode).make_call();
+                mode_call.set_option("Normal");
+                mode_call.perform();
+            - delay: 200ms
+            - script.execute: temporary_profile_restore_snapshot
+            - script.execute: temporary_profile_clear_owner
+
+  - id: temporary_profile_restore_snapshot
+    mode: single
+    then:
       - lambda: |-
-          int duration = id(fireplace_duration_minutes);
-          ESP_LOGI("fireplace", "Starting %d minute timer", duration);
-      - delay: !lambda "return id(fireplace_duration_minutes) * 60 * 1000;"
+          if (!id(temporary_profile_active)) return;
+          const auto &mode = id(temporary_profile_target_mode);
+          const float supply = id(temporary_profile_restore_supply);
+          const float extract = id(temporary_profile_restore_extract);
+
+          if (mode == "Min") {
+            auto a = id(supply_air_percentage_min).make_call(); a.set_value(supply); a.perform();
+            auto b = id(extract_air_percentage_min).make_call(); b.set_value(extract); b.perform();
+          } else if (mode == "Normal") {
+            auto a = id(supply_air_percentage_normal).make_call(); a.set_value(supply); a.perform();
+            auto b = id(extract_air_percentage_normal).make_call(); b.set_value(extract); b.perform();
+          } else if (mode == "Max") {
+            auto a = id(supply_air_percentage_max).make_call(); a.set_value(supply); a.perform();
+            auto b = id(extract_air_percentage_max).make_call(); b.set_value(extract); b.perform();
+          }
+
+  - id: temporary_profile_clear_owner
+    mode: single
+    then:
       - lambda: |-
-          ESP_LOGI("fireplace", "Fireplace timer expired, deactivating");
-      - switch.turn_off: fireplace_mode_switch
+          id(temporary_profile_active) = false;
+          id(temporary_profile_owner).clear();
+          id(temporary_profile_target_mode).clear();
+          id(temporary_profile_lease_seconds) = 0;
+          id(temporary_profile_lease_started_ms) = 0;
+          id(temporary_profile_change_ms) = millis();
+          id(temporary_profile_owner_sensor).update();
+          id(temporary_profile_lease_remaining).update();
+
+# Detect native Flexit/panel/I/O mode changes. A running external mode cancels
+# ownership without restoration; Stop additionally restores the temporary slot
+# while leaving the unit stopped.
+interval:
+  - interval: 1s
+    then:
+      - if:
+          condition:
+            lambda: |-
+              if (!id(temporary_profile_active)) return false;
+              if ((millis() - id(temporary_profile_change_ms)) < 5000U) return false;
+              const int expected = flexit_modbus_server::string_to_mode(id(temporary_profile_target_mode));
+              const int actual = id(server)->read_holding_register(flexit_modbus_server::REG_MODE);
+              return actual != expected;
+          then:
+            - lambda: |-
+                const int actual = id(server)->read_holding_register(flexit_modbus_server::REG_MODE);
+                ESP_LOGI("temp_profile", "External mode change detected: %s",
+                         flexit_modbus_server::mode_to_string(actual).c_str());
+            - script.stop: temporary_profile_lease_timer
+            - if:
+                condition:
+                  lambda: |-
+                    return id(server)->read_holding_register(flexit_modbus_server::REG_MODE) == 0;
+                then:
+                  # Stop is a protected state: clean the overridden slot but
+                  # never command a mode change away from Stop.
+                  - script.execute: temporary_profile_restore_snapshot
+            - script.execute: temporary_profile_clear_owner
