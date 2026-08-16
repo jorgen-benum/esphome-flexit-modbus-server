@@ -224,3 +224,71 @@ def test_commissioned_template_numbers_have_safe_initial_state() -> None:
         assert "set_action:" in body
 
     assert "does not invoke set_action or write Modbus at boot" in CONFIG
+
+
+def test_script_parameters_use_supported_types_and_safe_signed_bounds() -> None:
+    scripts = CONFIG[CONFIG.index("script:\n"):]
+    parameter_types = re.findall(
+        r"^      [a-z_]+: ([a-zA-Z0-9_:]+)$",
+        scripts,
+        re.MULTILINE,
+    )
+    assert "uint32_t" not in parameter_types
+    assert "transaction: int" in scripts
+    assert "lease_seconds: int" in scripts
+    assert "delay_ms:" not in scripts
+    assert "type: int" in _global_body("temporary_profile_generation")
+    assert "type: int" in _global_body("temporary_profile_pending_generation")
+
+    apply = _script_body("temporary_profile_apply", "temporary_profile_lease_timer")
+    assert "lease_seconds > 4294967" in apply
+    assert "++id(temporary_profile_generation)" not in CONFIG
+    assert CONFIG.count("temporary_profile_generation) >= 2147483647") >= 4
+
+
+def test_pending_running_native_takeover_is_not_overwritten() -> None:
+    assert "restore_value: no" in _global_body("temporary_profile_pre_apply_mode")
+    apply = _script_body("temporary_profile_apply", "temporary_profile_lease_timer")
+    delayed = apply[apply.index("- delay: 200ms"):]
+    assert "actual != id(temporary_profile_pre_apply_mode)" in delayed
+    assert "actual != expected_target" in delayed
+    takeover = delayed.index("Running native takeover detected during pending apply")
+    clear = delayed.index("temporary_profile_clear_owner", takeover)
+    assert "temporary_profile_restore_snapshot" not in delayed[takeover:clear]
+    assert takeover < clear < delayed.index("mode_call.set_option(target_mode)")
+
+
+def test_release_before_acknowledgement_restores_original_snapshot() -> None:
+    finish = _script_body("temporary_profile_finish", "temporary_profile_restore_snapshot")
+    assert "original_mode_unacknowledged" in finish
+    assert "!id(temporary_profile_target_observed)" in finish
+    assert "actual == id(temporary_profile_pre_apply_mode)" in finish
+    assert "actual != expected && !original_mode_unacknowledged" in finish
+    assert "actual != flexit_modbus_server::string_to_mode(\"Normal\")" in finish
+    assert finish.index("original_mode_unacknowledged") < finish.index('mode_call.set_option("Normal")')
+    assert finish.count("original_mode_unacknowledged") >= 2
+    assert "executor_mode_still_observed" in finish
+    assert "!executor_mode_still_observed" in finish
+
+
+def test_expiry_before_acknowledgement_restores_original_snapshot() -> None:
+    lease = _script_body("temporary_profile_lease_timer", "temporary_profile_finish")
+    assert "original_mode_unacknowledged" in lease
+    assert "!id(temporary_profile_target_observed)" in lease
+    assert "actual == id(temporary_profile_pre_apply_mode)" in lease
+    assert "actual != expected && !original_mode_unacknowledged" in lease
+    assert "temporary_profile_finish" in lease
+
+
+def test_terminal_apply_paths_do_not_enter_the_delay() -> None:
+    apply = _script_body("temporary_profile_apply", "temporary_profile_lease_timer")
+    guard = apply.index("      - if:\n          condition:")
+    delay = apply.index("- delay: 200ms")
+    assert guard < delay
+    guard_body = apply[guard:delay]
+    assert "return id(temporary_profile_apply_pending)" in guard_body
+    assert "temporary_profile_pending_generation) == id(temporary_profile_generation)" in guard_body
+
+    renewal = apply.index("if (same_request)")
+    renewal_return = apply.index("return;", renewal)
+    assert renewal < renewal_return < guard

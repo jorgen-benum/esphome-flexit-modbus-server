@@ -136,12 +136,12 @@ globals:
   - id: temporary_profile_generation
     # Every accepted lifecycle transition advances this generation. Delayed
     # continuations act only when their transaction still owns the generation.
-    type: uint32_t
+    type: int
     restore_value: no
     initial_value: '0'
 
   - id: temporary_profile_pending_generation
-    type: uint32_t
+    type: int
     restore_value: no
     initial_value: '0'
 
@@ -150,6 +150,12 @@ globals:
     type: bool
     restore_value: no
     initial_value: 'false'
+
+  - id: temporary_profile_pre_apply_mode
+    # Physical running mode captured before temporary profile writes begin.
+    type: int
+    restore_value: no
+    initial_value: '0'
 
 api:
   actions:
@@ -185,13 +191,15 @@ api:
                 id(temporary_profile_phase) == 3) {
               return;
             }
-            const bool target_was_pending = id(temporary_profile_phase) == 1;
-            const uint32_t transaction = ++id(temporary_profile_generation);
+            const int transaction =
+              id(temporary_profile_generation) >= 2147483647
+                ? 1 : id(temporary_profile_generation) + 1;
+            id(temporary_profile_generation) = transaction;
             id(temporary_profile_phase) = 3;
             id(temporary_profile_apply_pending) = false;
             id(temporary_profile_apply).stop();
             id(temporary_profile_lease_timer).stop();
-            id(temporary_profile_finish).execute(transaction, target_was_pending);
+            id(temporary_profile_finish).execute(transaction);
 
 switch:
   - platform: template
@@ -806,8 +814,8 @@ script:
     then:
       - lambda: |-
           // Complete every validation before changing lease or diagnostic state.
-          if (owner.empty() || lease_seconds <= 0) {
-            ESP_LOGW("temp_profile", "Rejected request with empty owner or invalid lease");
+          if (owner.empty() || lease_seconds <= 0 || lease_seconds > 4294967) {
+            ESP_LOGW("temp_profile", "Rejected request with empty owner or out-of-range lease");
             return;
           }
           if (target_mode == "Stop") {
@@ -846,13 +854,16 @@ script:
           }
 
           if (same_request) {
-            const uint32_t transaction = ++id(temporary_profile_generation);
+            const int transaction =
+              id(temporary_profile_generation) >= 2147483647
+                ? 1 : id(temporary_profile_generation) + 1;
+            id(temporary_profile_generation) = transaction;
             id(temporary_profile_lease_seconds) = lease_seconds;
             id(temporary_profile_lease_started_ms) = millis();
             ESP_LOGD("temp_profile", "Renewing lease for owner '%s'", owner.c_str());
             id(temporary_profile_lease_timer).execute(
               transaction,
-              static_cast<uint32_t>(lease_seconds) * 1000U
+              lease_seconds
             );
             id(temporary_profile_lease_remaining).update();
             return;
@@ -878,7 +889,11 @@ script:
             }
           }
 
-          const uint32_t transaction = ++id(temporary_profile_generation);
+          const int transaction =
+            id(temporary_profile_generation) >= 2147483647
+              ? 1 : id(temporary_profile_generation) + 1;
+          id(temporary_profile_generation) = transaction;
+          id(temporary_profile_pre_apply_mode) = current_mode;
           id(temporary_profile_pending_generation) = transaction;
           id(temporary_profile_phase) = 1;
           id(temporary_profile_apply_pending) = true;
@@ -916,55 +931,90 @@ script:
             extract_call.set_value(extract);
             extract_call.perform();
           }
-      - delay: 200ms
-      - lambda: |-
-          // This continuation owns only the generation allocated above.
-          if (!id(temporary_profile_apply_pending) ||
-              !id(temporary_profile_active) ||
-              id(temporary_profile_phase) != 1 ||
-              id(temporary_profile_pending_generation) != id(temporary_profile_generation) ||
-              id(temporary_profile_owner) != owner ||
-              id(temporary_profile_target_mode) != target_mode) {
-            return;
-          }
+      # Rejected requests and renewals leave apply_pending false, so they finish
+      # synchronously and do not occupy mode: single during the 200 ms delay.
+      - if:
+          condition:
+            lambda: |-
+              return id(temporary_profile_apply_pending) &&
+                     id(temporary_profile_active) &&
+                     id(temporary_profile_phase) == 1 &&
+                     id(temporary_profile_pending_generation) == id(temporary_profile_generation) &&
+                     id(temporary_profile_owner) == owner &&
+                     id(temporary_profile_target_mode) == target_mode;
+          then:
+            - delay: 200ms
+            - lambda: |-
+                // Revalidate the transaction after yielding to the delay.
+                if (!id(temporary_profile_apply_pending) ||
+                    !id(temporary_profile_active) ||
+                    id(temporary_profile_phase) != 1 ||
+                    id(temporary_profile_pending_generation) != id(temporary_profile_generation) ||
+                    id(temporary_profile_owner) != owner ||
+                    id(temporary_profile_target_mode) != target_mode) {
+                  return;
+                }
 
-          // Stop is re-read immediately before the delayed target-mode command.
-          const int current_mode = id(server)->read_holding_register(
-            flexit_modbus_server::REG_MODE
-          );
-          if (current_mode == 0) {
-            const uint32_t transaction = ++id(temporary_profile_generation);
-            id(temporary_profile_phase) = 3;
-            id(temporary_profile_apply_pending) = false;
-            id(temporary_profile_lease_timer).stop();
-            ESP_LOGI("temp_profile", "Stop selected during apply; restoring snapshot without changing mode");
-            id(temporary_profile_restore_snapshot).execute(transaction);
-            id(temporary_profile_clear_owner).execute(transaction);
-            return;
-          }
+                // Stop is re-read immediately before the delayed target-mode command.
+                const int current_mode = id(server)->read_holding_register(
+                  flexit_modbus_server::REG_MODE
+                );
+                if (current_mode == 0) {
+                  const int transaction =
+                    id(temporary_profile_generation) >= 2147483647
+                      ? 1 : id(temporary_profile_generation) + 1;
+                  id(temporary_profile_generation) = transaction;
+                  id(temporary_profile_phase) = 3;
+                  id(temporary_profile_apply_pending) = false;
+                  id(temporary_profile_lease_timer).stop();
+                  ESP_LOGI("temp_profile", "Stop selected during apply; restoring snapshot without changing mode");
+                  id(temporary_profile_restore_snapshot).execute(transaction);
+                  id(temporary_profile_clear_owner).execute(transaction);
+                  return;
+                }
 
-          const uint32_t transaction = id(temporary_profile_pending_generation);
-          id(temporary_profile_apply_pending) = false;
-          id(temporary_profile_phase) = 2;
-          id(temporary_profile_target_observed) = false;
-          id(temporary_profile_change_ms) = millis();
-          auto mode_call = id(set_mode).make_call();
-          mode_call.set_option(target_mode);
-          mode_call.perform();
-          id(temporary_profile_lease_timer).execute(
-            transaction,
-            static_cast<uint32_t>(id(temporary_profile_lease_seconds)) * 1000U
-          );
-          id(temporary_profile_owner_sensor).update();
-          id(temporary_profile_lease_remaining).update();
+                const int actual = current_mode;
+                const int expected_target = flexit_modbus_server::string_to_mode(target_mode);
+                if (actual != id(temporary_profile_pre_apply_mode) &&
+                    actual != expected_target) {
+                  const int transaction =
+                    id(temporary_profile_generation) >= 2147483647
+                      ? 1 : id(temporary_profile_generation) + 1;
+                  id(temporary_profile_generation) = transaction;
+                  id(temporary_profile_phase) = 3;
+                  id(temporary_profile_apply_pending) = false;
+                  id(temporary_profile_lease_timer).stop();
+                  ESP_LOGI("temp_profile", "Running native takeover detected during pending apply: %s",
+                           flexit_modbus_server::mode_to_string(actual).c_str());
+                  id(temporary_profile_clear_owner).execute(transaction);
+                  return;
+                }
+
+                const int transaction = id(temporary_profile_pending_generation);
+                id(temporary_profile_apply_pending) = false;
+                id(temporary_profile_phase) = 2;
+                id(temporary_profile_target_observed) = false;
+                id(temporary_profile_change_ms) = millis();
+                auto mode_call = id(set_mode).make_call();
+                mode_call.set_option(target_mode);
+                mode_call.perform();
+                id(temporary_profile_lease_timer).execute(
+                  transaction,
+                  id(temporary_profile_lease_seconds)
+                );
+                id(temporary_profile_owner_sensor).update();
+                id(temporary_profile_lease_remaining).update();
 
   - id: temporary_profile_lease_timer
     mode: restart
     parameters:
-      transaction: uint32_t
-      delay_ms: uint32_t
+      transaction: int
+      lease_seconds: int
     then:
-      - delay: !lambda "return delay_ms;"
+      - delay: !lambda |-
+          const int bounded_seconds = lease_seconds < 1
+            ? 1 : (lease_seconds > 4294967 ? 4294967 : lease_seconds);
+          return static_cast<uint32_t>(bounded_seconds) * 1000U;
       - lambda: |-
           if (transaction != id(temporary_profile_generation) ||
               !id(temporary_profile_active) ||
@@ -978,7 +1028,13 @@ script:
           const int actual = id(server)->read_holding_register(
             flexit_modbus_server::REG_MODE
           );
-          const uint32_t cleanup_transaction = ++id(temporary_profile_generation);
+          const bool original_mode_unacknowledged =
+            !id(temporary_profile_target_observed) &&
+            actual == id(temporary_profile_pre_apply_mode);
+          const int cleanup_transaction =
+            id(temporary_profile_generation) >= 2147483647
+              ? 1 : id(temporary_profile_generation) + 1;
+          id(temporary_profile_generation) = cleanup_transaction;
           id(temporary_profile_phase) = 3;
           id(temporary_profile_apply_pending) = false;
           id(temporary_profile_apply).stop();
@@ -989,7 +1045,7 @@ script:
             id(temporary_profile_clear_owner).execute(cleanup_transaction);
             return;
           }
-          if (actual != expected) {
+          if (actual != expected && !original_mode_unacknowledged) {
             ESP_LOGI("temp_profile", "Running native takeover detected at lease expiry: %s",
                      flexit_modbus_server::mode_to_string(actual).c_str());
             id(temporary_profile_clear_owner).execute(cleanup_transaction);
@@ -997,16 +1053,14 @@ script:
           }
 
           ESP_LOGI("temp_profile", "Temporary profile lease expired");
-          id(temporary_profile_finish).execute(cleanup_transaction, false);
+          id(temporary_profile_finish).execute(cleanup_transaction);
 
-  # Normal completion/release is transaction-bound. A release that interrupts
-  # pending apply still returns to Normal and restores, because the target-mode
-  # command has not yet been issued and the old running mode is not a takeover.
+  # Normal completion/release is transaction-bound. Before acknowledgement, the
+  # captured pre-apply mode is still a normal completion state, not a takeover.
   - id: temporary_profile_finish
     mode: single
     parameters:
-      transaction: uint32_t
-      target_was_pending: bool
+      transaction: int
     then:
       - lambda: |-
           if (transaction != id(temporary_profile_generation) ||
@@ -1027,17 +1081,22 @@ script:
           const int expected = flexit_modbus_server::string_to_mode(
             id(temporary_profile_target_mode)
           );
-          if (!target_was_pending && actual != expected) {
+          const bool original_mode_unacknowledged =
+            !id(temporary_profile_target_observed) &&
+            actual == id(temporary_profile_pre_apply_mode);
+          if (actual != expected && !original_mode_unacknowledged) {
             ESP_LOGI("temp_profile", "Running native takeover detected during release: %s",
                      flexit_modbus_server::mode_to_string(actual).c_str());
             id(temporary_profile_clear_owner).execute(transaction);
             return;
           }
 
-          id(temporary_profile_change_ms) = millis();
-          auto mode_call = id(set_mode).make_call();
-          mode_call.set_option("Normal");
-          mode_call.perform();
+          if (actual != flexit_modbus_server::string_to_mode("Normal")) {
+            id(temporary_profile_change_ms) = millis();
+            auto mode_call = id(set_mode).make_call();
+            mode_call.set_option("Normal");
+            mode_call.perform();
+          }
       - delay: 200ms
       - lambda: |-
           if (transaction != id(temporary_profile_generation) ||
@@ -1054,7 +1113,16 @@ script:
             id(temporary_profile_clear_owner).execute(transaction);
             return;
           }
-          if (actual != flexit_modbus_server::string_to_mode("Normal")) {
+          const int expected_target = flexit_modbus_server::string_to_mode(
+            id(temporary_profile_target_mode)
+          );
+          const bool original_mode_unacknowledged =
+            !id(temporary_profile_target_observed) &&
+            actual == id(temporary_profile_pre_apply_mode);
+          const bool executor_mode_still_observed =
+            actual == expected_target || original_mode_unacknowledged;
+          if (actual != flexit_modbus_server::string_to_mode("Normal") &&
+              !executor_mode_still_observed) {
             ESP_LOGI("temp_profile", "Running native takeover detected during cleanup: %s",
                      flexit_modbus_server::mode_to_string(actual).c_str());
             id(temporary_profile_clear_owner).execute(transaction);
@@ -1067,7 +1135,7 @@ script:
   - id: temporary_profile_restore_snapshot
     mode: single
     parameters:
-      transaction: uint32_t
+      transaction: int
     then:
       - lambda: |-
           if (transaction != id(temporary_profile_generation) ||
@@ -1093,7 +1161,7 @@ script:
   - id: temporary_profile_clear_owner
     mode: single
     parameters:
-      transaction: uint32_t
+      transaction: int
     then:
       - lambda: |-
           if (transaction != id(temporary_profile_generation) ||
@@ -1111,6 +1179,7 @@ script:
           id(temporary_profile_apply_pending) = false;
           id(temporary_profile_pending_generation) = 0;
           id(temporary_profile_target_observed) = false;
+          id(temporary_profile_pre_apply_mode) = 0;
           id(temporary_profile_change_ms) = millis();
           id(temporary_profile_phase) = 0;
           id(temporary_profile_owner_sensor).update();
@@ -1132,7 +1201,10 @@ interval:
           // Stop invalidates pending apply or finish immediately and is never
           // hidden by the target-mode acknowledgement window.
           if (actual == 0) {
-            const uint32_t transaction = ++id(temporary_profile_generation);
+            const int transaction =
+              id(temporary_profile_generation) >= 2147483647
+                ? 1 : id(temporary_profile_generation) + 1;
+            id(temporary_profile_generation) = transaction;
             id(temporary_profile_phase) = 3;
             id(temporary_profile_apply_pending) = false;
             id(temporary_profile_apply).stop();
@@ -1165,7 +1237,10 @@ interval:
             return;
           }
 
-          const uint32_t transaction = ++id(temporary_profile_generation);
+          const int transaction =
+            id(temporary_profile_generation) >= 2147483647
+              ? 1 : id(temporary_profile_generation) + 1;
+          id(temporary_profile_generation) = transaction;
           id(temporary_profile_phase) = 3;
           id(temporary_profile_apply_pending) = false;
           id(temporary_profile_apply).stop();
