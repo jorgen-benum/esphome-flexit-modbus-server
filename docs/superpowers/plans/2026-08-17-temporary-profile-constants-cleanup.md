@@ -4,7 +4,7 @@
 
 **Goal:** Make commissioned profile values and executor timing/safety constants self-documenting and single-source while preserving runtime behavior.
 
-**Architecture:** Define ESPHome substitutions at the top of `full_config.yaml`, reference the commissioned substitutions from the six template-number startup values, and remove the redundant commissioned globals. Replace timing and integer-limit literals in executor actions with named substitutions or `INT_MAX`; lifecycle phases remain documented beside their state global.
+**Architecture:** Define ESPHome substitutions at the top of `full_config.yaml`, reference the commissioned substitutions from the six template-number startup values, and remove the redundant commissioned globals. Replace timing and integer-limit literals in executor actions with named substitutions or `std::numeric_limits<int>::max()`; lifecycle phases remain documented beside their state global.
 
 **Tech Stack:** ESPHome YAML substitutions, embedded C++ lambdas, Python text-contract tests
 
@@ -34,7 +34,7 @@
 - [ ] Assert no `default_*` commissioned global remains.
 - [ ] Assert `${MAX_SAFE_LEASE_SECONDS}` appears in lease validation and timer bounding, while `4294967` is absent.
 - [ ] Assert both executor delays use `${temporary_profile_modbus_settle_delay}`, the watcher uses `${temporary_profile_mode_ack_timeout_ms}`, and the raw timing literals are absent from executor logic.
-- [ ] Assert executor generation guards use `INT_MAX` and `2147483647` is absent.
+- [ ] Assert executor generation guards use `std::numeric_limits<int>::max()` and `2147483647` is absent.
 - [ ] Run `python -c "import runpy; ns=runpy.run_path('tests/test_full_config_contract.py'); tests=[f for n,f in ns.items() if n.startswith('test_')]; [test() for test in tests]; print(f'{len(tests)} passed')"` and confirm the new tests fail for missing substitutions.
 - [ ] Run `python -m py_compile tests/test_full_config_contract.py` and commit with `test: define temporary profile constants contract`.
 

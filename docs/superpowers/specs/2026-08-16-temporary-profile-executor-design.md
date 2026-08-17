@@ -32,7 +32,7 @@ The substitutions are the single source of truth for both documentation and the 
 
 Use named substitutions instead of unexplained numeric literals:
 
-- `max_safe_lease_seconds: "43200"` limits temporary ownership to 12 hours.
+- `MAX_SAFE_LEASE_SECONDS: "43200"` limits temporary ownership to 12 hours.
 - `temporary_profile_modbus_settle_delay: "200ms"` allows profile and mode writes to propagate before the next transaction step.
 - `temporary_profile_mode_ack_timeout_ms: "5000"` allows the commanded mode to appear in the status register before a mismatch is classified as native takeover.
 
