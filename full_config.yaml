@@ -1,3 +1,21 @@
+substitutions:
+  # Commissioned profile values; these initialize ESPHome state only and do not write Modbus at boot.
+  commissioned_supply_fan_min: "50.0"
+  commissioned_extract_fan_min: "50.0"
+  commissioned_supply_fan_normal: "60.0"
+  commissioned_extract_fan_normal: "57.0"
+  commissioned_supply_fan_max: "100.0"
+  commissioned_extract_fan_max: "100.0"
+
+  # Temporary ownership is bounded to 12 hours, including timer conversion.
+  MAX_SAFE_LEASE_SECONDS: "43200"
+
+  # Allow Modbus writes to settle before the next transaction step.
+  temporary_profile_modbus_settle_delay: "200ms"
+
+  # Maximum wait for the commanded mode to appear before classifying takeover.
+  temporary_profile_mode_ack_timeout_ms: "5000"
+
 ## hw and sw setup
 
 wifi:
@@ -42,36 +60,6 @@ flexit_modbus_server:
 # esp home controls and sensors
 
 globals:
-  - id: default_supply_fan_min
-    type: float
-    restore_value: no
-    initial_value: '50.0'  # Commissioned MIN supply
-
-  - id: default_extract_fan_min
-    type: float
-    restore_value: no
-    initial_value: '50.0'  # Commissioned MIN extract
-
-  - id: default_supply_fan_normal
-    type: float
-    restore_value: no
-    initial_value: '60.0'  # Commissioned NORMAL supply
-
-  - id: default_extract_fan_normal
-    type: float
-    restore_value: no
-    initial_value: '57.0'  # Commissioned NORMAL extract
-
-  - id: default_supply_fan_max
-    type: float
-    restore_value: no
-    initial_value: '100.0'  # Commissioned MAX supply
-
-  - id: default_extract_fan_max
-    type: float
-    restore_value: no
-    initial_value: '100.0'  # Commissioned MAX extract
-
   - id: temporary_profile_active
     type: bool
     restore_value: no
@@ -192,7 +180,7 @@ api:
               return;
             }
             const int transaction =
-              id(temporary_profile_generation) >= 2147483647
+              id(temporary_profile_generation) >= INT_MAX
                 ? 1 : id(temporary_profile_generation) + 1;
             id(temporary_profile_generation) = transaction;
             id(temporary_profile_phase) = 3;
@@ -374,7 +362,7 @@ number:
     optimistic: True
     # ESPHome template-number setup publishes this commissioned fallback; it
     # does not invoke set_action or write Modbus at boot.
-    initial_value: 50.0
+    initial_value: ${commissioned_supply_fan_min}
     restore_value: True
     disabled_by_default: True
     mode: BOX
@@ -392,7 +380,7 @@ number:
     min_value: 1
     step: 1
     optimistic: True
-    initial_value: 60.0
+    initial_value: ${commissioned_supply_fan_normal}
     restore_value: True
     disabled_by_default: True
     mode: BOX
@@ -410,7 +398,7 @@ number:
     min_value: 1
     step: 1
     optimistic: True
-    initial_value: 100.0
+    initial_value: ${commissioned_supply_fan_max}
     restore_value: True
     disabled_by_default: True
     mode: BOX
@@ -428,7 +416,7 @@ number:
     min_value: 1
     step: 1
     optimistic: True
-    initial_value: 50.0
+    initial_value: ${commissioned_extract_fan_min}
     restore_value: True
     disabled_by_default: True
     mode: BOX
@@ -446,7 +434,7 @@ number:
     min_value: 1
     step: 1
     optimistic: True
-    initial_value: 57.0
+    initial_value: ${commissioned_extract_fan_normal}
     restore_value: True
     disabled_by_default: True
     mode: BOX
@@ -464,7 +452,7 @@ number:
     min_value: 1
     step: 1
     optimistic: True
-    initial_value: 100.0
+    initial_value: ${commissioned_extract_fan_max}
     restore_value: True
     disabled_by_default: True
     mode: BOX
@@ -814,7 +802,7 @@ script:
     then:
       - lambda: |-
           // Complete every validation before changing lease or diagnostic state.
-          if (owner.empty() || lease_seconds <= 0 || lease_seconds > 4294967) {
+          if (owner.empty() || lease_seconds <= 0 || lease_seconds > ${MAX_SAFE_LEASE_SECONDS}) {
             ESP_LOGW("temp_profile", "Rejected request with empty owner or out-of-range lease");
             return;
           }
@@ -855,7 +843,7 @@ script:
 
           if (same_request) {
             const int transaction =
-              id(temporary_profile_generation) >= 2147483647
+              id(temporary_profile_generation) >= INT_MAX
                 ? 1 : id(temporary_profile_generation) + 1;
             id(temporary_profile_generation) = transaction;
             id(temporary_profile_lease_seconds) = lease_seconds;
@@ -890,7 +878,7 @@ script:
           }
 
           const int transaction =
-            id(temporary_profile_generation) >= 2147483647
+            id(temporary_profile_generation) >= INT_MAX
               ? 1 : id(temporary_profile_generation) + 1;
           id(temporary_profile_generation) = transaction;
           id(temporary_profile_pre_apply_mode) = current_mode;
@@ -943,7 +931,7 @@ script:
                      id(temporary_profile_owner) == owner &&
                      id(temporary_profile_target_mode) == target_mode;
           then:
-            - delay: 200ms
+            - delay: ${temporary_profile_modbus_settle_delay}
             - lambda: |-
                 // Revalidate the transaction after yielding to the delay.
                 if (!id(temporary_profile_apply_pending) ||
@@ -961,7 +949,7 @@ script:
                 );
                 if (current_mode == 0) {
                   const int transaction =
-                    id(temporary_profile_generation) >= 2147483647
+                    id(temporary_profile_generation) >= INT_MAX
                       ? 1 : id(temporary_profile_generation) + 1;
                   id(temporary_profile_generation) = transaction;
                   id(temporary_profile_phase) = 3;
@@ -978,7 +966,7 @@ script:
                 if (actual != id(temporary_profile_pre_apply_mode) &&
                     actual != expected_target) {
                   const int transaction =
-                    id(temporary_profile_generation) >= 2147483647
+                    id(temporary_profile_generation) >= INT_MAX
                       ? 1 : id(temporary_profile_generation) + 1;
                   id(temporary_profile_generation) = transaction;
                   id(temporary_profile_phase) = 3;
@@ -1013,7 +1001,7 @@ script:
     then:
       - delay: !lambda |-
           const int bounded_seconds = lease_seconds < 1
-            ? 1 : (lease_seconds > 4294967 ? 4294967 : lease_seconds);
+            ? 1 : (lease_seconds > ${MAX_SAFE_LEASE_SECONDS} ? ${MAX_SAFE_LEASE_SECONDS} : lease_seconds);
           return static_cast<uint32_t>(bounded_seconds) * 1000U;
       - lambda: |-
           if (transaction != id(temporary_profile_generation) ||
@@ -1032,7 +1020,7 @@ script:
             !id(temporary_profile_target_observed) &&
             actual == id(temporary_profile_pre_apply_mode);
           const int cleanup_transaction =
-            id(temporary_profile_generation) >= 2147483647
+            id(temporary_profile_generation) >= INT_MAX
               ? 1 : id(temporary_profile_generation) + 1;
           id(temporary_profile_generation) = cleanup_transaction;
           id(temporary_profile_phase) = 3;
@@ -1097,7 +1085,7 @@ script:
             mode_call.set_option("Normal");
             mode_call.perform();
           }
-      - delay: 200ms
+      - delay: ${temporary_profile_modbus_settle_delay}
       - lambda: |-
           if (transaction != id(temporary_profile_generation) ||
               !id(temporary_profile_active) ||
@@ -1202,7 +1190,7 @@ interval:
           // hidden by the target-mode acknowledgement window.
           if (actual == 0) {
             const int transaction =
-              id(temporary_profile_generation) >= 2147483647
+              id(temporary_profile_generation) >= INT_MAX
                 ? 1 : id(temporary_profile_generation) + 1;
             id(temporary_profile_generation) = transaction;
             id(temporary_profile_phase) = 3;
@@ -1233,12 +1221,12 @@ interval:
           }
 
           if (!id(temporary_profile_target_observed) &&
-              (millis() - id(temporary_profile_change_ms)) < 5000U) {
+              (millis() - id(temporary_profile_change_ms)) < ${temporary_profile_mode_ack_timeout_ms}U) {
             return;
           }
 
           const int transaction =
-            id(temporary_profile_generation) >= 2147483647
+            id(temporary_profile_generation) >= INT_MAX
               ? 1 : id(temporary_profile_generation) + 1;
           id(temporary_profile_generation) = transaction;
           id(temporary_profile_phase) = 3;
