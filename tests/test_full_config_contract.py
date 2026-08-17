@@ -254,8 +254,9 @@ def test_script_parameters_use_supported_types_and_safe_signed_bounds() -> None:
     assert "lease_seconds > ${MAX_SAFE_LEASE_SECONDS}" in apply
     assert "4294967" not in CONFIG
     assert "++id(temporary_profile_generation)" not in CONFIG
-    assert CONFIG.count("temporary_profile_generation) >= INT_MAX") >= 4
+    assert CONFIG.count("temporary_profile_generation) >= std::numeric_limits<int>::max()") >= 4
     assert "2147483647" not in CONFIG
+    assert " >= INT_MAX" not in CONFIG
 
 
 def test_pending_running_native_takeover_is_not_overwritten() -> None:

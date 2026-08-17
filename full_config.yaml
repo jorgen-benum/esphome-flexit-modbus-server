@@ -180,7 +180,7 @@ api:
               return;
             }
             const int transaction =
-              id(temporary_profile_generation) >= INT_MAX
+              id(temporary_profile_generation) >= std::numeric_limits<int>::max()
                 ? 1 : id(temporary_profile_generation) + 1;
             id(temporary_profile_generation) = transaction;
             id(temporary_profile_phase) = 3;
@@ -789,7 +789,7 @@ text_sensor:
 
 script:
   # API apply calls are serialized here. mode: single rejects a duplicate while
-  # its 200 ms continuation is pending instead of letting two requests share
+  # its settle-delay continuation is pending instead of letting two requests share
   # mutable pending state.
   - id: temporary_profile_apply
     mode: single
@@ -843,7 +843,7 @@ script:
 
           if (same_request) {
             const int transaction =
-              id(temporary_profile_generation) >= INT_MAX
+              id(temporary_profile_generation) >= std::numeric_limits<int>::max()
                 ? 1 : id(temporary_profile_generation) + 1;
             id(temporary_profile_generation) = transaction;
             id(temporary_profile_lease_seconds) = lease_seconds;
@@ -878,7 +878,7 @@ script:
           }
 
           const int transaction =
-            id(temporary_profile_generation) >= INT_MAX
+            id(temporary_profile_generation) >= std::numeric_limits<int>::max()
               ? 1 : id(temporary_profile_generation) + 1;
           id(temporary_profile_generation) = transaction;
           id(temporary_profile_pre_apply_mode) = current_mode;
@@ -920,7 +920,7 @@ script:
             extract_call.perform();
           }
       # Rejected requests and renewals leave apply_pending false, so they finish
-      # synchronously and do not occupy mode: single during the 200 ms delay.
+      # synchronously and do not occupy mode: single during the configured settle delay.
       - if:
           condition:
             lambda: |-
@@ -949,7 +949,7 @@ script:
                 );
                 if (current_mode == 0) {
                   const int transaction =
-                    id(temporary_profile_generation) >= INT_MAX
+                    id(temporary_profile_generation) >= std::numeric_limits<int>::max()
                       ? 1 : id(temporary_profile_generation) + 1;
                   id(temporary_profile_generation) = transaction;
                   id(temporary_profile_phase) = 3;
@@ -966,7 +966,7 @@ script:
                 if (actual != id(temporary_profile_pre_apply_mode) &&
                     actual != expected_target) {
                   const int transaction =
-                    id(temporary_profile_generation) >= INT_MAX
+                    id(temporary_profile_generation) >= std::numeric_limits<int>::max()
                       ? 1 : id(temporary_profile_generation) + 1;
                   id(temporary_profile_generation) = transaction;
                   id(temporary_profile_phase) = 3;
@@ -1020,7 +1020,7 @@ script:
             !id(temporary_profile_target_observed) &&
             actual == id(temporary_profile_pre_apply_mode);
           const int cleanup_transaction =
-            id(temporary_profile_generation) >= INT_MAX
+            id(temporary_profile_generation) >= std::numeric_limits<int>::max()
               ? 1 : id(temporary_profile_generation) + 1;
           id(temporary_profile_generation) = cleanup_transaction;
           id(temporary_profile_phase) = 3;
@@ -1190,7 +1190,7 @@ interval:
           // hidden by the target-mode acknowledgement window.
           if (actual == 0) {
             const int transaction =
-              id(temporary_profile_generation) >= INT_MAX
+              id(temporary_profile_generation) >= std::numeric_limits<int>::max()
                 ? 1 : id(temporary_profile_generation) + 1;
             id(temporary_profile_generation) = transaction;
             id(temporary_profile_phase) = 3;
@@ -1226,7 +1226,7 @@ interval:
           }
 
           const int transaction =
-            id(temporary_profile_generation) >= INT_MAX
+            id(temporary_profile_generation) >= std::numeric_limits<int>::max()
               ? 1 : id(temporary_profile_generation) + 1;
           id(temporary_profile_generation) = transaction;
           id(temporary_profile_phase) = 3;

@@ -36,7 +36,7 @@ Use named substitutions instead of unexplained numeric literals:
 - `temporary_profile_modbus_settle_delay: "200ms"` allows profile and mode writes to propagate before the next transaction step.
 - `temporary_profile_mode_ack_timeout_ms: "5000"` allows the commanded mode to appear in the status register before a mismatch is classified as native takeover.
 
-Use the C++ `INT_MAX` constant instead of the literal `2147483647` when advancing the signed transaction generation.
+Use `std::numeric_limits<int>::max()` instead of the literal `2147483647` when advancing the signed transaction generation. ESPHome already provides the standard `<limits>` header, so this does not require changing the component source.
 
 The mode-acknowledgement timeout does not delay the mode command. Stop remains immediately authoritative during the acknowledgement window.
 

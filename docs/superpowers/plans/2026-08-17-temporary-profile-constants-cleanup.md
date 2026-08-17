@@ -13,7 +13,7 @@
 - Keep commissioned values exactly MIN 50/50, NORMAL 60/57, MAX 100/100.
 - Use `MAX_SAFE_LEASE_SECONDS: "43200"` with a comment identifying the 12-hour ownership bound.
 - Use `temporary_profile_modbus_settle_delay: "200ms"` and `temporary_profile_mode_ack_timeout_ms: "5000"`.
-- Replace every executor generation literal `2147483647` with `INT_MAX`.
+- Replace every executor generation literal `2147483647` with `std::numeric_limits<int>::max()`.
 - Remove the six unused `default_*` globals; substitutions become the only commissioned-value source.
 - Do not add optimistic-state readback as hardware verification.
 - Preserve lifecycle behavior, API shape, entity IDs, unrelated configuration, and sibling repositories.
@@ -53,7 +53,7 @@
 - [ ] Replace both `4294967` bounds with `${MAX_SAFE_LEASE_SECONDS}`.
 - [ ] Replace both `200ms` executor delays with `${temporary_profile_modbus_settle_delay}`.
 - [ ] Replace the watcher `5000U` threshold with `${temporary_profile_mode_ack_timeout_ms}U`.
-- [ ] Replace every `2147483647` generation guard with `INT_MAX`.
+- [ ] Replace every `2147483647` generation guard with `std::numeric_limits<int>::max()`.
 - [ ] Run the complete assertion-preserving contract suite and expect all tests to pass.
 - [ ] Run Python compilation, `git diff --check`, ID/legacy/scope checks, and review the YAML diff for unchanged lifecycle behavior.
 - [ ] Commit only `full_config.yaml` with `refactor: name temporary profile constants`.
