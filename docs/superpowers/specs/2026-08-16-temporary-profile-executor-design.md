@@ -18,7 +18,7 @@ Use a focused inline replacement:
 
 ## Commissioned profiles
 
-Keep these installation-specific commissioned values as non-restored globals and label them clearly as commissioned values:
+Keep these installation-specific commissioned values as ESPHome substitutions and label them clearly as commissioned values:
 
 | Profile | Supply | Extract |
 | --- | ---: | ---: |
@@ -26,7 +26,34 @@ Keep these installation-specific commissioned values as non-restored globals and
 | NORMAL | 60% | 57% |
 | MAX | 100% | 100% |
 
-These values document the commissioned installation and provide fallbacks. They are not automatically written to the Flexit controller at boot.
+The substitutions are the single source of truth for both documentation and the six template-number `initial_value` fields. Publishing those initial states does not invoke their `set_action`, so they are not automatically written to the Flexit controller at boot. The redundant `default_*` globals are removed.
+
+## Timing and safety constants
+
+Use named substitutions instead of unexplained numeric literals:
+
+- `max_safe_lease_seconds: "43200"` limits temporary ownership to 12 hours.
+- `temporary_profile_modbus_settle_delay: "200ms"` allows profile and mode writes to propagate before the next transaction step.
+- `temporary_profile_mode_ack_timeout_ms: "5000"` allows the commanded mode to appear in the status register before a mismatch is classified as native takeover.
+
+Use the C++ `INT_MAX` constant instead of the literal `2147483647` when advancing the signed transaction generation.
+
+The mode-acknowledgement timeout does not delay the mode command. Stop remains immediately authoritative during the acknowledgement window.
+
+## Lifecycle and restoration
+
+The executor uses four lifecycle phases:
+
+- `0` — idle: no temporary profile is owned.
+- `1` — pending: temporary profile values have been written, but the target-mode command has not completed.
+- `2` — active: the target-mode command was sent and is being acknowledged or has been observed.
+- `3` — finishing: release, expiry, Stop handling, or takeover cleanup is in progress.
+
+Every accepted lifecycle transition advances a generation number. Delayed actions carry the generation of the transaction that created them and do nothing if a newer transition has invalidated it. This prevents stale delayed work from changing modes or restoring values after release, takeover, Stop, or a newer request.
+
+The lifecycle determines when restoration is safe. The values themselves come from the supply/extract snapshot captured before the first temporary owner changes the target profile. Owner replacement on the same target retains that original snapshot. Normal release and expiry restore it; Stop restores it without leaving Stop; native running-mode takeover deliberately clears ownership without immediate restoration so the executor does not fight the physical controller.
+
+True Modbus readback verification of temporary profile values is out of scope. The executor retains its bounded propagation delay and transaction revalidation rather than treating optimistic ESPHome number state as hardware confirmation.
 
 ## ESPHome interface
 
