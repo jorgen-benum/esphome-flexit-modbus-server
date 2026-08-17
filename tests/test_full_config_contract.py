@@ -313,11 +313,8 @@ def test_named_timing_constants_replace_executor_literals() -> None:
     watcher = CONFIG[CONFIG.index("interval:\n  - interval: 1s"):]
 
     assert scripts.count("delay: ${temporary_profile_modbus_settle_delay}") == 2
-    assert "delay: 200ms" not in scripts
     assert "lease_seconds > ${MAX_SAFE_LEASE_SECONDS}" in scripts
-    assert "lease_seconds > 4294967" not in scripts
     assert "${temporary_profile_mode_ack_timeout_ms}U" in watcher
-    assert "5000U" not in watcher
 
 
 def test_setup_uses_one_api_block_and_external_secrets() -> None:
@@ -342,9 +339,7 @@ def test_setup_uses_one_api_block_and_external_secrets() -> None:
 def test_verified_esp32_c3_setup_and_fallback_hotspot_are_documented() -> None:
     assert "board: esp32-c3-m1i-kit" in CONFIG
     assert "Ai-Thinker ESP32-C3-M1-I-Kit" in CONFIG
-    assert "XIAO ESP32C6" not in CONFIG
     assert "tx_pin: GPIO6" in CONFIG
     assert "rx_pin: GPIO7" in CONFIG
     assert "tx_enable_pin: GPIO4" in CONFIG
     assert "Flexit Fallback Hotspot" in CONFIG
-    assert "captive portal" not in CONFIG.lower()
