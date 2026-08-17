@@ -1,3 +1,30 @@
+esphome:
+  name: flexit
+  friendly_name: Flexit
+
+esp32:
+  board: esp32-c3-m1i-kit
+  framework:
+    type: arduino
+
+#### Insert your setup from here ####
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+wifi:
+  fast_connect: true           # Needed if powered from the CS60
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot in case the Wi-Fi connection fails
+  ap:
+    ssid: "Flexit Fallback Hotspot"
+    password: !secret fallback_ap_password
+
+#### ----------To here---------- ####
+
 substitutions:
   # Commissioned profile values; these initialize ESPHome state only and do not write Modbus at boot.
   commissioned_supply_fan_min: "50.0"
@@ -18,9 +45,6 @@ substitutions:
 
 ## hw and sw setup
 
-wifi:
-  fast_connect: true           # Needed if powered from the CS60
-
 logger:
   baud_rate: 115200 #0
   hardware_uart: UART1
@@ -34,7 +58,7 @@ external_components:
     components: 
       - flexit_modbus_server
 
-# setup for XIAO ESP32C6 https://wiki.seeedstudio.com/xiao_esp32c6_getting_started/
+# Ai-Thinker ESP32-C3-M1-I-Kit; GPIO assignments verified for this installation.
 uart:
   id: modbus_uart
   tx_pin: GPIO6
@@ -146,6 +170,9 @@ globals:
     initial_value: '0'
 
 api:
+  # Encryption and temporary-profile actions must share this single API block.
+  encryption:
+    key: !secret api_encryption_key
   actions:
     # One logical request: profile + target mode + owner + safety lease.
     # Sending an identical request only renews the lease; no Modbus values or

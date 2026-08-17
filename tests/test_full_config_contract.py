@@ -7,7 +7,8 @@ CONFIG = (Path(__file__).parents[1] / "full_config.yaml").read_text()
 
 def test_generic_temporary_profile_interface_is_inlined() -> None:
     required_fragments = {
-        "api actions": "api:\n  actions:",
+        "api encryption": "key: !secret api_encryption_key",
+        "api actions": "  actions:",
         "apply action": "action: apply_temporary_profile",
         "release action": "action: release_temporary_profile",
         "owner input": "owner: string",
@@ -317,3 +318,33 @@ def test_named_timing_constants_replace_executor_literals() -> None:
     assert "lease_seconds > 4294967" not in scripts
     assert "${temporary_profile_mode_ack_timeout_ms}U" in watcher
     assert "5000U" not in watcher
+
+
+def test_setup_uses_one_api_block_and_external_secrets() -> None:
+    api_definitions = re.findall(r"^api:$", CONFIG, re.MULTILINE)
+    assert len(api_definitions) == 1
+
+    api = re.search(r"^api:\n(?P<body>(?:  .*|\s*)*?)(?=^[a-z_]+:|\Z)", CONFIG, re.MULTILINE)
+    assert api is not None
+    api_body = api.group("body")
+    assert "encryption:" in api_body
+    assert "key: !secret api_encryption_key" in api_body
+    assert "actions:" in api_body
+
+    assert "ssid: !secret wifi_ssid" in CONFIG
+    assert "password: !secret wifi_password" in CONFIG
+    assert "password: !secret ota_password" in CONFIG
+    assert "password: !secret fallback_ap_password" in CONFIG
+    assert "your key" not in CONFIG
+    assert "your pass" not in CONFIG
+
+
+def test_verified_esp32_c3_setup_and_fallback_hotspot_are_documented() -> None:
+    assert "board: esp32-c3-m1i-kit" in CONFIG
+    assert "Ai-Thinker ESP32-C3-M1-I-Kit" in CONFIG
+    assert "XIAO ESP32C6" not in CONFIG
+    assert "tx_pin: GPIO6" in CONFIG
+    assert "rx_pin: GPIO7" in CONFIG
+    assert "tx_enable_pin: GPIO4" in CONFIG
+    assert "Flexit Fallback Hotspot" in CONFIG
+    assert "captive portal" not in CONFIG.lower()
