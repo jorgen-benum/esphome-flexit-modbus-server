@@ -55,10 +55,9 @@ logger:
 external_components:
   - source: github://jorgen-benum/esphome-flexit-modbus-server@main
     refresh: 60s
-    components: 
+    components:
       - flexit_modbus_server
 
-# Ai-Thinker ESP32-C3-M1-I-Kit; GPIO assignments verified for this installation.
 uart:
   id: modbus_uart
   tx_pin: GPIO6
@@ -73,7 +72,7 @@ uart:
 flexit_modbus_server:
   - id: server
     uart_id: modbus_uart
-    address: 1 # must be 1 if using cl60 panel
+    address: 1 # must be 1 when using cl60 panel
     tx_enable_pin: GPIO4
     tx_enable_direct: true
 
@@ -170,7 +169,6 @@ globals:
     initial_value: '0'
 
 api:
-  # Encryption and temporary-profile actions must share this single API block.
   encryption:
     key: !secret api_encryption_key
   actions:
@@ -221,6 +219,7 @@ switch:
     id: heater
     name: "Heater"
     lambda: "return id(server)->read_holding_register(flexit_modbus_server::REG_STATUS_HEATER);"
+    entity_category: config
     turn_on_action:
       - lambda: |-
           id(server)->send_cmd(
@@ -239,6 +238,7 @@ switch:
     name: "Supply Air Control"
     optimistic: True
     restore_mode: RESTORE_DEFAULT_ON
+    entity_category: config
     turn_on_action:
       - lambda: |-
           id(server)->send_cmd(
@@ -256,7 +256,8 @@ button:
   - platform: template
     id: clear_alarms
     name: "Clear Alarms"
-    on_press: 
+    entity_category: config
+    on_press:
       - lambda: |-
           id(server)->send_cmd(
             flexit_modbus_server::REG_CMD_CLEAR_ALARMS,
@@ -266,7 +267,8 @@ button:
   - platform: template
     id: reset_filter_interval
     name: "Reset Filter Interval"
-    on_press: 
+    entity_category: config
+    on_press:
       - lambda: |-
           id(server)->send_cmd(
             flexit_modbus_server::REG_CMD_CLEAR_FILTER_ALARM,
@@ -276,7 +278,7 @@ button:
   - platform: template
     id: start_max_timer
     name: "Start Max Timer"
-    on_press: 
+    on_press:
       - lambda: |-
           id(server)->send_cmd(
             flexit_modbus_server::REG_CMD_START_MAX_TIMER,
@@ -286,13 +288,13 @@ button:
   - platform: template
     id: stop_max_timer
     name: "Stop Max Timer"
-    on_press: 
+    on_press:
       - lambda: |-
           id(server)->send_cmd(
             flexit_modbus_server::REG_CMD_STOP_MAX_TIMER,
             1
           );
-  
+
 number:
   - platform: template
     id: temperature
@@ -301,6 +303,7 @@ number:
     min_value: 10
     step: 0.5
     update_interval: 1s
+    entity_category: config
     lambda: |-
       return id(server)->read_holding_register_temperature(
         flexit_modbus_server::REG_TEMPERATURE_SETPOINT
@@ -321,7 +324,8 @@ number:
     optimistic: True
     initial_value: 15
     restore_value: True
-    disabled_by_default: True
+    disabled_by_default: False
+    entity_category: config
     set_action:
       lambda: |-
         id(server)->send_cmd(
@@ -338,6 +342,7 @@ number:
     optimistic: True
     restore_value: True
     disabled_by_default: True
+    entity_category: config
     mode: BOX
     set_action:
       lambda: |-
@@ -355,6 +360,7 @@ number:
     optimistic: True
     restore_value: True
     disabled_by_default: True
+    entity_category: config
     mode: BOX
     set_action:
       lambda: |-
@@ -372,6 +378,7 @@ number:
     optimistic: True
     initial_value: 180
     restore_value: True
+    entity_category: config
     mode: BOX
     set_action:
       lambda: |-
@@ -391,7 +398,8 @@ number:
     # does not invoke set_action or write Modbus at boot.
     initial_value: ${commissioned_supply_fan_min}
     restore_value: True
-    disabled_by_default: True
+    disabled_by_default: False
+    entity_category: config
     mode: BOX
     set_action:
       lambda: |-
@@ -399,7 +407,7 @@ number:
             flexit_modbus_server::REG_CMD_PERCENTAGE_SUPPLY_FAN_MIN,
             x
         );
-  
+
   - platform: template
     id: supply_air_percentage_normal
     name: "Supply Air Percentage Normal"
@@ -408,8 +416,10 @@ number:
     step: 1
     optimistic: True
     initial_value: ${commissioned_supply_fan_normal}
+    # Remember last value across stops, reboots etc
     restore_value: True
-    disabled_by_default: True
+    disabled_by_default: False
+    entity_category: config
     mode: BOX
     set_action:
       lambda: |-
@@ -417,7 +427,7 @@ number:
             flexit_modbus_server::REG_CMD_PERCENTAGE_SUPPLY_FAN_NORMAL,
             x
         );
-  
+
   - platform: template
     id: supply_air_percentage_max
     name: "Supply Air Percentage Max"
@@ -427,7 +437,8 @@ number:
     optimistic: True
     initial_value: ${commissioned_supply_fan_max}
     restore_value: True
-    disabled_by_default: True
+    disabled_by_default: False
+    entity_category: config
     mode: BOX
     set_action:
       lambda: |-
@@ -435,7 +446,7 @@ number:
             flexit_modbus_server::REG_CMD_PERCENTAGE_SUPPLY_FAN_MAX,
             x
         );
-  
+
   - platform: template
     id: extract_air_percentage_min
     name: "Extract Air Percentage Min"
@@ -445,7 +456,8 @@ number:
     optimistic: True
     initial_value: ${commissioned_extract_fan_min}
     restore_value: True
-    disabled_by_default: True
+    disabled_by_default: False
+    entity_category: config
     mode: BOX
     set_action:
       lambda: |-
@@ -462,8 +474,10 @@ number:
     step: 1
     optimistic: True
     initial_value: ${commissioned_extract_fan_normal}
+    # Remember last value across stops, reboots etc
     restore_value: True
-    disabled_by_default: True
+    disabled_by_default: False
+    entity_category: config
     mode: BOX
     set_action:
       lambda: |-
@@ -471,7 +485,7 @@ number:
             flexit_modbus_server::REG_CMD_PERCENTAGE_EXTRACT_FAN_NORMAL,
             x
         );
-  
+
   - platform: template
     id: extract_air_percentage_max
     name: "Extract Air Percentage Max"
@@ -479,9 +493,9 @@ number:
     min_value: 1
     step: 1
     optimistic: True
-    initial_value: ${commissioned_extract_fan_max}
     restore_value: True
-    disabled_by_default: True
+    disabled_by_default: False
+    entity_category: config
     mode: BOX
     set_action:
       lambda: |-
@@ -552,18 +566,19 @@ sensor:
     filters:
       - delta: 0.2
 
-  - platform: template
-    id: extract_air_temperature
-    name: "Extract Air Temperature"
-    update_interval: 60s
-    device_class: temperature
-    unit_of_measurement: "°C"
-    lambda: |-
-      return id(server)->read_holding_register_temperature(
-        flexit_modbus_server::REG_TEMPERATURE_EXTRACT_AIR
-      );
-    filters:
-      - delta: 0.2
+    # Not relevant for HM43 setup
+  # - platform: template
+  #   id: extract_air_temperature
+  #   name: "Extract Air Temperature"
+  #   update_interval: 60s
+  #   device_class: temperature
+  #   unit_of_measurement: "°C"
+  #   lambda: |-
+  #     return id(server)->read_holding_register_temperature(
+  #       flexit_modbus_server::REG_TEMPERATURE_EXTRACT_AIR
+  #     );
+  #   filters:
+  #     - delta: 0.2
 
   - platform: template
     id: outdoor_air_temperature
@@ -578,16 +593,17 @@ sensor:
     filters:
       - delta: 0.2
 
-  - platform: template
-    id: return_water_temperature
-    name: "Return Water Temperature"
-    update_interval: 60s
-    device_class: temperature
-    unit_of_measurement: "°C"
-    lambda: |-
-      return id(server)->read_holding_register_temperature(
-        flexit_modbus_server::REG_TEMPERATURE_RETURN_WATER
-      );
+  #   # Not relevant for HM43 setup
+  # - platform: template
+  #   id: return_water_temperature
+  #   name: "Return Water Temperature"
+  #   update_interval: 60s
+  #   device_class: temperature
+  #   unit_of_measurement: "°C"
+  #   lambda: |-
+  #     return id(server)->read_holding_register_temperature(
+  #       flexit_modbus_server::REG_TEMPERATURE_RETURN_WATER
+  #     );
 
   - platform: template
     id: heating_percentage
@@ -598,7 +614,7 @@ sensor:
       return id(server)->read_holding_register(
         flexit_modbus_server::REG_PERCENTAGE_HEATING
       );
-  
+
   - platform: template
     id: cooling_percentage
     name: "Cooling Percentage"
