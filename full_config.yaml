@@ -11,7 +11,7 @@ esp32:
 
 ota:
   - platform: esphome
-    password: !secret ota_password
+    password: !secret flexit_ota_password
 
 wifi:
   fast_connect: true           # Needed if powered from the CS60
@@ -170,7 +170,7 @@ globals:
 
 api:
   encryption:
-    key: !secret api_encryption_key
+    key: !secret flexit_api_encryption_key
   actions:
     # One logical request: profile + target mode + owner + safety lease.
     # Sending an identical request only renews the lease; no Modbus values or
