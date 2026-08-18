@@ -117,7 +117,7 @@ An identical request (same owner, target mode, supply and extract) only **renews
 
 ### Native takeover
 
-If the panel, kitchen I/O, or another native source changes the running mode away from the owned target, the executor cancels the lease and clears ownership immediately, without restoring profile values or fighting the externally selected mode. This keeps the executor from fighting native Flexit behavior.
+If the panel, kitchen I/O, or another native source changes the running mode away from the owned target, the executor cancels the lease, clears ownership, and restores the overridden profile's snapshot — but it never touches the externally selected mode itself. Restoring the snapshot only cleans up the percentage values the executor changed; it doesn't fight the takeover.
 
 Ownership is deliberately generic (any caller can pick an owner string like `humidity` or `fireplace`) so a higher-level controller can implement its own request/ownership/completion policy — including priority between competing requests — without changes to this executor.
 
@@ -175,6 +175,14 @@ A Python script for monitoring and decoding the TCP bridge traffic is included i
 - Track coil state changes with `--coil-changes` flag
 
 </details>
+
+---
+
+## Site-specific notes (this installation)
+
+Observed on the HM43/CS60 unit this fork's `full_config.yaml` is actually flashed to — not confirmed on other models.
+
+**Kitchen boost reports Min mode but drives fan speed from the Max registers.** When the kitchen extraction input activates, the mode reports as `Min`, but the actual fan speed comes from whatever is currently in `Supply/Extract Air Percentage Max`, not Min. This was found by comparing before/after adding the temporary-profile executor: the old fireplace-only implementation always force-restored Max on any takeover, so kitchen boost always saw the commissioned 100%. The executor's original "don't restore on takeover" behavior left a fireplace session's overridden Max value (e.g. 80%) stuck in the register, silently reused by every later kitchen boost. That's why every takeover branch now restores the profile snapshot (still without touching the mode) — see "Native takeover" above.
 
 ---
 
