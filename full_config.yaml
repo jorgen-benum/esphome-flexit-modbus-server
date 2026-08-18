@@ -7,7 +7,7 @@ esp32:
   framework:
     type: arduino
 
-#### Insert your setup from here ####
+#### Insert your secrets in /config/esphome/secrets.yaml ####
 
 ota:
   - platform: esphome
@@ -22,8 +22,6 @@ wifi:
   ap:
     ssid: "Flexit Fallback Hotspot"
     password: !secret fallback_ap_password
-
-#### ----------To here---------- ####
 
 substitutions:
   # Commissioned profile values; these initialize ESPHome state only and do not write Modbus at boot.
