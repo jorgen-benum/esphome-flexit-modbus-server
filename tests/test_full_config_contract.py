@@ -7,7 +7,7 @@ CONFIG = (Path(__file__).parents[1] / "full_config.yaml").read_text()
 
 def test_generic_temporary_profile_interface_is_inlined() -> None:
     required_fragments = {
-        "api encryption": "key: !secret api_encryption_key",
+        "api encryption": "key: !secret flexit_api_encryption_key",
         "api actions": "  actions:",
         "apply action": "action: apply_temporary_profile",
         "release action": "action: release_temporary_profile",
@@ -260,16 +260,16 @@ def test_script_parameters_use_supported_types_and_safe_signed_bounds() -> None:
     assert " >= INT_MAX" not in CONFIG
 
 
-def test_pending_running_native_takeover_is_not_overwritten() -> None:
+def test_pending_running_native_takeover_restores_snapshot() -> None:
     assert "restore_value: no" in _global_body("temporary_profile_pre_apply_mode")
     apply = _script_body("temporary_profile_apply", "temporary_profile_lease_timer")
     delayed = apply[apply.index("- delay: ${temporary_profile_modbus_settle_delay}"):]
     assert "actual != id(temporary_profile_pre_apply_mode)" in delayed
     assert "actual != expected_target" in delayed
     takeover = delayed.index("Running native takeover detected during pending apply")
+    restore = delayed.index("temporary_profile_restore_snapshot", takeover)
     clear = delayed.index("temporary_profile_clear_owner", takeover)
-    assert "temporary_profile_restore_snapshot" not in delayed[takeover:clear]
-    assert takeover < clear < delayed.index("mode_call.set_option(target_mode)")
+    assert takeover < restore < clear < delayed.index("mode_call.set_option(target_mode)")
 
 
 def test_release_before_acknowledgement_restores_original_snapshot() -> None:
@@ -325,12 +325,12 @@ def test_setup_uses_one_api_block_and_external_secrets() -> None:
     assert api is not None
     api_body = api.group("body")
     assert "encryption:" in api_body
-    assert "key: !secret api_encryption_key" in api_body
+    assert "key: !secret flexit_api_encryption_key" in api_body
     assert "actions:" in api_body
 
     assert "ssid: !secret wifi_ssid" in CONFIG
     assert "password: !secret wifi_password" in CONFIG
-    assert "password: !secret ota_password" in CONFIG
+    assert "password: !secret flexit_ota_password" in CONFIG
     assert "password: !secret fallback_ap_password" in CONFIG
     assert "your key" not in CONFIG
     assert "your pass" not in CONFIG
@@ -338,7 +338,7 @@ def test_setup_uses_one_api_block_and_external_secrets() -> None:
 
 def test_verified_esp32_c3_setup_and_fallback_hotspot_are_documented() -> None:
     assert "board: esp32-c3-m1i-kit" in CONFIG
-    assert "Ai-Thinker ESP32-C3-M1-I-Kit" in CONFIG
+    assert "Insert your secrets in /config/esphome/secrets.yaml" in CONFIG
     assert "tx_pin: GPIO6" in CONFIG
     assert "rx_pin: GPIO7" in CONFIG
     assert "tx_enable_pin: GPIO4" in CONFIG

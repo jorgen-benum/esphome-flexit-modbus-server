@@ -491,6 +491,7 @@ number:
     min_value: 1
     step: 1
     optimistic: True
+    initial_value: ${commissioned_extract_fan_max}
     restore_value: True
     disabled_by_default: False
     entity_category: config
@@ -1015,6 +1016,7 @@ script:
                   id(temporary_profile_lease_timer).stop();
                   ESP_LOGI("temp_profile", "Running native takeover detected during pending apply: %s",
                            flexit_modbus_server::mode_to_string(actual).c_str());
+                  id(temporary_profile_restore_snapshot).execute(transaction);
                   id(temporary_profile_clear_owner).execute(transaction);
                   return;
                 }
@@ -1077,6 +1079,7 @@ script:
           if (actual != expected && !original_mode_unacknowledged) {
             ESP_LOGI("temp_profile", "Running native takeover detected at lease expiry: %s",
                      flexit_modbus_server::mode_to_string(actual).c_str());
+            id(temporary_profile_restore_snapshot).execute(cleanup_transaction);
             id(temporary_profile_clear_owner).execute(cleanup_transaction);
             return;
           }
@@ -1116,6 +1119,7 @@ script:
           if (actual != expected && !original_mode_unacknowledged) {
             ESP_LOGI("temp_profile", "Running native takeover detected during release: %s",
                      flexit_modbus_server::mode_to_string(actual).c_str());
+            id(temporary_profile_restore_snapshot).execute(transaction);
             id(temporary_profile_clear_owner).execute(transaction);
             return;
           }
@@ -1154,6 +1158,7 @@ script:
               !executor_mode_still_observed) {
             ESP_LOGI("temp_profile", "Running native takeover detected during cleanup: %s",
                      flexit_modbus_server::mode_to_string(actual).c_str());
+            id(temporary_profile_restore_snapshot).execute(transaction);
             id(temporary_profile_clear_owner).execute(transaction);
             return;
           }
@@ -1277,4 +1282,5 @@ interval:
           id(temporary_profile_finish).stop();
           ESP_LOGI("temp_profile", "Running native takeover detected: %s",
                    flexit_modbus_server::mode_to_string(actual).c_str());
+          id(temporary_profile_restore_snapshot).execute(transaction);
           id(temporary_profile_clear_owner).execute(transaction);
