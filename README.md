@@ -89,7 +89,7 @@ This project implements a Modbus server for Flexit ventilation systems using ESP
 
 ## Temporary Profile Executor
 
-Native Flexit controls (panel, kitchen I/O, manual Stop/Min/Normal/Max) stay authoritative for everyday operation. On top of that, the ESPHome config exposes a generic mechanism for higher-level automations — like [flexit_ventilation_control](https://github.com/jorgen-benum/flexit_ventilation_control), a Home Assistant integration for humidity boost and fireplace mode — to request a **temporary, safety-leased** mode override without needing to know about each other.
+Native Flexit controls (panel, kitchen I/O, manual Stop/Min/Normal/Max) stay authoritative for everyday operation. On top of that, the ESPHome config exposes a generic mechanism for higher-level automations — such as a Home Assistant integration handling humidity boost or fireplace mode — to request a **temporary, safety-leased** mode override without needing to know about each other.
 
 The executor itself is policy-free: it doesn't know what "humidity" or "fireplace" mean. It just applies a requested profile, tracks who owns it, and guarantees it can never get stuck overriding the system if the requester disappears.
 
@@ -119,7 +119,7 @@ An identical request (same owner, target mode, supply and extract) only **renews
 
 If the panel, kitchen I/O, or another native source changes the running mode away from the owned target, the executor cancels the lease and clears ownership immediately, without restoring profile values or fighting the externally selected mode. This keeps the executor from fighting native Flexit behavior.
 
-For the full request/ownership/completion state machine and the reasoning behind it, see [flexit_ventilation_control/DESIGN.md](https://github.com/jorgen-benum/flexit_ventilation_control/blob/main/DESIGN.md), which documents the Home Assistant side that consumes this executor.
+Ownership is deliberately generic (any caller can pick an owner string like `humidity` or `fireplace`) so a higher-level controller can implement its own request/ownership/completion policy — including priority between competing requests — without changes to this executor.
 
 ---
 
