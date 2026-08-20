@@ -272,6 +272,35 @@ def test_pending_running_native_takeover_restores_snapshot() -> None:
     assert takeover < restore < clear < delayed.index("mode_call.set_option(target_mode)")
 
 
+def test_non_stop_takeovers_reassert_normal_mode() -> None:
+    takeover_labels = [
+        "Running native takeover detected during pending apply",
+        "Running native takeover detected at lease expiry",
+        "Running native takeover detected during release",
+        "Running native takeover detected during cleanup",
+        "Running native takeover detected: %s",
+    ]
+    for label in takeover_labels:
+        site = CONFIG.index(label)
+        window = CONFIG[site: CONFIG.index("temporary_profile_clear_owner", site) + 1]
+        assert 'mode_call.set_option("Normal")' in window, f"missing Normal reassertion for: {label}"
+        assert 'string_to_mode("Normal")' in window, f"missing not-already-Normal guard for: {label}"
+        restore_index = window.index("temporary_profile_restore_snapshot")
+        mode_index = window.index('mode_call.set_option("Normal")')
+        assert restore_index < mode_index, f"restore must precede Normal reassertion for: {label}"
+
+    # Stop paths must remain untouched: never command a mode change away from Stop.
+    stop_labels = [
+        "Stop selected during apply; restoring snapshot without changing mode",
+        "Lease expired in Stop; restoring snapshot without changing mode",
+        "Stop detected; restoring snapshot without changing mode",
+    ]
+    for label in stop_labels:
+        site = CONFIG.index(label)
+        window = CONFIG[site: CONFIG.index("temporary_profile_clear_owner", site) + 1]
+        assert "mode_call" not in window, f"Stop path must not reassert mode: {label}"
+
+
 def test_release_before_acknowledgement_restores_original_snapshot() -> None:
     finish = _script_body("temporary_profile_finish", "temporary_profile_restore_snapshot")
     assert "original_mode_unacknowledged" in finish

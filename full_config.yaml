@@ -1017,6 +1017,11 @@ script:
                   ESP_LOGI("temp_profile", "Running native takeover detected during pending apply: %s",
                            flexit_modbus_server::mode_to_string(actual).c_str());
                   id(temporary_profile_restore_snapshot).execute(transaction);
+                  if (actual != flexit_modbus_server::string_to_mode("Normal")) {
+                    auto mode_call = id(set_mode).make_call();
+                    mode_call.set_option("Normal");
+                    mode_call.perform();
+                  }
                   id(temporary_profile_clear_owner).execute(transaction);
                   return;
                 }
@@ -1080,6 +1085,11 @@ script:
             ESP_LOGI("temp_profile", "Running native takeover detected at lease expiry: %s",
                      flexit_modbus_server::mode_to_string(actual).c_str());
             id(temporary_profile_restore_snapshot).execute(cleanup_transaction);
+            if (actual != flexit_modbus_server::string_to_mode("Normal")) {
+              auto mode_call = id(set_mode).make_call();
+              mode_call.set_option("Normal");
+              mode_call.perform();
+            }
             id(temporary_profile_clear_owner).execute(cleanup_transaction);
             return;
           }
@@ -1120,6 +1130,11 @@ script:
             ESP_LOGI("temp_profile", "Running native takeover detected during release: %s",
                      flexit_modbus_server::mode_to_string(actual).c_str());
             id(temporary_profile_restore_snapshot).execute(transaction);
+            if (actual != flexit_modbus_server::string_to_mode("Normal")) {
+              auto mode_call = id(set_mode).make_call();
+              mode_call.set_option("Normal");
+              mode_call.perform();
+            }
             id(temporary_profile_clear_owner).execute(transaction);
             return;
           }
@@ -1159,6 +1174,11 @@ script:
             ESP_LOGI("temp_profile", "Running native takeover detected during cleanup: %s",
                      flexit_modbus_server::mode_to_string(actual).c_str());
             id(temporary_profile_restore_snapshot).execute(transaction);
+            if (actual != flexit_modbus_server::string_to_mode("Normal")) {
+              auto mode_call = id(set_mode).make_call();
+              mode_call.set_option("Normal");
+              mode_call.perform();
+            }
             id(temporary_profile_clear_owner).execute(transaction);
             return;
           }
@@ -1283,4 +1303,9 @@ interval:
           ESP_LOGI("temp_profile", "Running native takeover detected: %s",
                    flexit_modbus_server::mode_to_string(actual).c_str());
           id(temporary_profile_restore_snapshot).execute(transaction);
+          if (actual != flexit_modbus_server::string_to_mode("Normal")) {
+            auto mode_call = id(set_mode).make_call();
+            mode_call.set_option("Normal");
+            mode_call.perform();
+          }
           id(temporary_profile_clear_owner).execute(transaction);
